@@ -35,7 +35,7 @@ function VaultScreen() {
     <PhoneShell>
       <ScreenHeader eyebrow="4 items · ₹3.2L covered" title="Your vault" />
 
-      <div className="px-5 pt-4">
+      <div className="px-5 pt-4 lg:px-8">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-sm border border-input bg-card px-3 py-2.5">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
@@ -61,13 +61,13 @@ function VaultScreen() {
         </div>
       </div>
 
-      <ul className="mt-4 grid gap-2 px-5 lg:grid-cols-2">
+      <ul className="mt-4 grid gap-2 px-5 lg:grid-cols-3 lg:px-8">
         {shown.map((item) => (
           <li key={item.id}>
             <Link
               to="/item/$itemId"
               params={{ itemId: item.id }}
-              className="block rounded-sm border border-border bg-card p-4 active:bg-secondary"
+              className="block h-full rounded-sm border border-border bg-card p-4 active:bg-secondary"
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                 <div className="min-w-0">
@@ -104,7 +104,7 @@ function VaultScreen() {
           </li>
         ))}
         {shown.length === 0 ? (
-          <li className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground lg:col-span-2">
+          <li className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground lg:col-span-3">
             Nothing here yet.
           </li>
         ) : null}

@@ -17,7 +17,7 @@ export function PhoneShell({
 }) {
   return (
     <div className="min-h-screen bg-secondary">
-      <div className="mx-auto grid min-h-screen w-full max-w-[1180px] bg-background lg:grid-cols-[240px_minmax(0,1fr)] lg:border-x lg:border-border">
+      <div className="mx-auto grid min-h-screen w-full max-w-[1280px] bg-background lg:grid-cols-[260px_minmax(0,1fr)] lg:border-x lg:border-border">
         {showTabs ? <DesktopRail /> : null}
         <div className="mx-auto flex min-h-screen w-full max-w-[760px] flex-col border-x border-border bg-background lg:max-w-none lg:border-x-0">
           <div className="flex-1 pb-28 lg:pb-8">{children}</div>
@@ -133,7 +133,7 @@ export function ScreenHeader({
   right?: ReactNode;
 }) {
   return (
-    <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-b border-border px-5 pb-4 pt-8">
+    <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-b border-border px-5 pb-4 pt-8 lg:px-8 lg:pt-10">
       <div className="min-w-0">
         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           {eyebrow}

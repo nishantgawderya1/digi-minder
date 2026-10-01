@@ -36,7 +36,7 @@ function AgentScreen() {
         }
       />
 
-      <div className="mx-auto w-full max-w-3xl space-y-4 px-5 py-5">
+      <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-5 lg:px-8 lg:pb-36">
         {agentThread.map((m, i) =>
           m.from === "user" ? (
             <p
@@ -46,7 +46,7 @@ function AgentScreen() {
               {m.text}
             </p>
           ) : (
-            <div key={i} className="max-w-[92%] space-y-2">
+            <div key={i} className="max-w-[92%] space-y-2 lg:max-w-[760px]">
               <p className="rounded-sm rounded-bl-none border border-border bg-card px-3.5 py-2.5 text-sm">
                 {m.text}
               </p>
@@ -97,7 +97,7 @@ function AgentScreen() {
         )}
       </div>
 
-      <div className="fixed bottom-[88px] left-1/2 w-full max-w-[420px] -translate-x-1/2 border-t border-border bg-background px-5 py-3 lg:bottom-0 lg:left-[calc(50%+120px)] lg:max-w-[760px]">
+      <div className="fixed bottom-[88px] left-1/2 w-full max-w-[420px] -translate-x-1/2 border-t border-border bg-background px-5 py-3 lg:bottom-0 lg:left-[calc(50%+130px)] lg:max-w-[1020px] lg:px-8">
         <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">
           {quickAsks.map((q) => (
             <button

@@ -36,15 +36,15 @@ function Dashboard() {
         }
       />
 
-      <div className="grid gap-6 px-5 pt-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+      <div className="grid gap-6 px-5 pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:px-8">
       <section>
-        <div className="rounded-sm border border-foreground bg-accent/20 p-4">
+        <div className="rounded-sm border border-foreground bg-accent/20 p-4 lg:p-6">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
                 Needs you first
               </p>
-              <h2 className="mt-1 text-lg font-bold leading-snug">{urgent.name}</h2>
+              <h2 className="mt-1 text-lg font-bold leading-snug lg:text-2xl">{urgent.name}</h2>
             </div>
             <StatusChip tone="ending">{urgent.monthsLeft} mo left</StatusChip>
           </div>
@@ -91,7 +91,7 @@ function Dashboard() {
       </section>
       </div>
 
-      <div className="grid gap-7 px-5 pt-7 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
+      <div className="grid gap-7 px-5 pt-7 lg:grid-cols-[360px_minmax(0,1fr)] lg:items-start lg:px-8">
       <section>
         <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           Coming up
@@ -131,13 +131,13 @@ function Dashboard() {
             See all <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        <ul className="mt-3 divide-y divide-border border-y border-border">
+        <ul className="mt-3 grid gap-2 border-y border-border py-2 lg:grid-cols-2 lg:border-y-0 lg:py-0">
           {items.slice(0, 3).map((item) => (
             <li key={item.id}>
               <Link
                 to="/item/$itemId"
                 params={{ itemId: item.id }}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3.5 active:bg-secondary"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border-border py-3.5 active:bg-secondary lg:border lg:bg-card lg:px-3.5"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold">{item.name}</p>
