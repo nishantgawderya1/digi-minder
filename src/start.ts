@@ -7,6 +7,25 @@ import { clerkMiddleware } from "@clerk/tanstack-react-start/server";
 
 import { renderErrorPage } from "./lib/error-page";
 
+function trustedOrigin(value: string | undefined) {
+  if (!value) return undefined;
+
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+const authorizedParties = [
+  trustedOrigin(process.env["APP_BASE_URL"]),
+  trustedOrigin(process.env["VERCEL_PROJECT_PRODUCTION_URL"]),
+  trustedOrigin(process.env["VERCEL_URL"]),
+  ...(process.env["VERCEL"]
+    ? []
+    : ["http://127.0.0.1:5173", "http://localhost:5173"]),
+].filter((origin): origin is string => Boolean(origin));
+
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
     return await next();
@@ -35,9 +54,7 @@ export const startInstance = createStart(() => ({
     ...(process.env["CLERK_SECRET_KEY"]
       ? [
           clerkMiddleware({
-            authorizedParties: [
-              process.env["APP_BASE_URL"] ?? "http://127.0.0.1:5173",
-            ],
+            authorizedParties,
           }),
         ]
       : []),
