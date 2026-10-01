@@ -23,7 +23,12 @@ const authorizedParties = [
   trustedOrigin(process.env["VERCEL_URL"]),
   ...(process.env["VERCEL"]
     ? []
-    : ["http://127.0.0.1:5173", "http://localhost:5173"]),
+    : [
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://localhost:5173",
+      ]),
 ].filter((origin): origin is string => Boolean(origin));
 
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
