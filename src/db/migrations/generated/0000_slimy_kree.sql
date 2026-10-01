@@ -55,13 +55,13 @@ CREATE TABLE "reminders" (
 	CONSTRAINT "reminders_channel_valid" CHECK ("reminders"."channel" IN ('email', 'push'))
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX "items_user_id_id_unique" ON "items" USING btree ("user_id","id");--> statement-breakpoint
 ALTER TABLE "documents" ADD CONSTRAINT "documents_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "documents" ADD CONSTRAINT "documents_user_item_fk" FOREIGN KEY ("user_id","item_id") REFERENCES "public"."items"("user_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "reminders" ADD CONSTRAINT "reminders_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "reminders" ADD CONSTRAINT "reminders_user_item_fk" FOREIGN KEY ("user_id","item_id") REFERENCES "public"."items"("user_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "documents_user_created_idx" ON "documents" USING btree ("user_id","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "items_user_id_id_unique" ON "items" USING btree ("user_id","id");--> statement-breakpoint
 CREATE INDEX "items_user_expiry_idx" ON "items" USING btree ("user_id","warranty_expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "reminders_user_item_time_unique" ON "reminders" USING btree ("user_id","item_id","remind_at");--> statement-breakpoint
 CREATE INDEX "reminders_due_idx" ON "reminders" USING btree ("status","remind_at");
