@@ -26,3 +26,14 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Application Stack
+
+- Auth: Clerk sessions, configured for Google sign-in only in the Clerk Dashboard.
+- Database: Neon Postgres with Drizzle schema and migrations. User-owned rows carry the Clerk user ID; server operations derive it from the verified session.
+- OCR: Nvidia Nemotron OCR for extracting fields from bills, invoices, warranty cards and uploaded PDFs.
+- Files: Original document bytes need a dedicated private object-storage provider. Postgres stores metadata and OCR results, not large file blobs.
+
+Copy `.env.example` to `.env` and add your Clerk and Neon credentials. Keep `.env` out of version control. Apply the schema with `npm run db:generate` and `npm run db:migrate` after installing dependencies and setting `DATABASE_URL`.
+
+For Google-only access, enable Google as a social connection in Clerk and disable other sign-in methods in the Clerk Dashboard. The app displays the providers enabled there.

@@ -10,10 +10,14 @@ export const Route = createFileRoute("/")({
         content:
           "Snap a bill, get the warranty read for you, and let the assistant chase support when something breaks.",
       },
-      { property: "og:title", content: "Warrantly — bills and warranties, sorted" },
+      {
+        property: "og:title",
+        content: "Warrantly — bills and warranties, sorted",
+      },
       {
         property: "og:description",
-        content: "Snap, store, and escalate. Your warranty paperwork finally works for you.",
+        content:
+          "Snap, store, and escalate. Your warranty paperwork finally works for you.",
       },
     ],
   }),
@@ -24,7 +28,7 @@ const steps = [
   {
     icon: ScanLine,
     title: "Snap it",
-    body: "Point your camera at the bill or warranty card. The details get read out for you.",
+    body: "Point your camera at the bill or warranty card. Nemotron OCR reads the details.",
   },
   {
     icon: ShieldCheck,
@@ -46,8 +50,8 @@ const steps = [
 function Landing() {
   return (
     <div className="min-h-screen bg-secondary">
-      <div className="mx-auto w-full max-w-[1180px] border-x border-border bg-background pb-16">
-        <header className="flex items-center justify-between border-b border-border px-5 py-4">
+      <div className="mx-auto w-full max-w-[1280px] border-x border-border bg-background pb-16">
+        <header className="flex items-center justify-between border-b border-border px-5 py-4 lg:px-10">
           <span className="font-display text-lg font-extrabold tracking-tight">
             Warrantly
           </span>
@@ -68,24 +72,25 @@ function Landing() {
               Your bills and warranties, finally on your side.
             </h1>
             <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted-foreground lg:text-lg">
-              Washing machine died in month four of a six-month warranty? Warrantly already
-              knows the dates, the invoice and who to shout at.
+              Washing machine died in month four of a six-month warranty?
+              Warrantly already knows the dates, the invoice and who to shout
+              at.
             </p>
           </div>
           <div className="flex flex-col gap-2">
-              <Link
-                to="/scan"
-                className="inline-flex items-center justify-between rounded-sm bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] active:translate-y-0.5 active:shadow-[0_2px_0_0_var(--color-foreground)]"
-              >
-                Scan your first bill
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                to="/home"
-                className="inline-flex items-center justify-center rounded-sm border border-foreground px-4 py-3 text-sm font-bold"
-              >
-                Look around first
-              </Link>
+            <Link
+              to="/scan"
+              className="inline-flex items-center justify-between rounded-sm bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] active:translate-y-0.5 active:shadow-[0_2px_0_0_var(--color-foreground)]"
+            >
+              Scan your first bill
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/home"
+              className="inline-flex items-center justify-center rounded-sm border border-foreground px-4 py-3 text-sm font-bold"
+            >
+              Look around first
+            </Link>
           </div>
         </section>
 
@@ -136,7 +141,8 @@ function Landing() {
             One tap away
           </p>
           <p className="mt-2 text-lg font-bold leading-snug">
-            “Fridge is leaking.” That sentence is enough — we handle the paperwork.
+            “Fridge is leaking.” That sentence is enough — we handle the
+            paperwork.
           </p>
           <Link
             to="/agent"

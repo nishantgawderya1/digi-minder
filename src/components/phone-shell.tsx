@@ -31,7 +31,10 @@ export function PhoneShell({
 function DesktopRail() {
   return (
     <aside className="sticky top-0 hidden h-screen border-r border-border bg-card/55 px-4 py-5 lg:flex lg:flex-col">
-      <Link to="/" className="font-display text-xl font-extrabold tracking-tight">
+      <Link
+        to="/"
+        className="font-display text-xl font-extrabold tracking-tight"
+      >
         Warrantly
       </Link>
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
@@ -92,7 +95,10 @@ function RailLink({
     <Link
       to={to}
       activeProps={{ className: "bg-primary text-primary-foreground" }}
-      inactiveProps={{ className: "text-muted-foreground hover:bg-secondary hover:text-foreground" }}
+      inactiveProps={{
+        className:
+          "text-muted-foreground hover:bg-secondary hover:text-foreground",
+      }}
       className="flex items-center gap-3 rounded-sm px-3 py-3 text-sm font-bold transition"
     >
       <Icon className="h-4 w-4" strokeWidth={2.2} />
