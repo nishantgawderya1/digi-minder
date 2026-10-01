@@ -1,4 +1,9 @@
-import { createStart, createCsrfMiddleware, createMiddleware } from "@tanstack/react-start";
+import {
+  createStart,
+  createCsrfMiddleware,
+  createMiddleware,
+} from "@tanstack/react-start";
+import { clerkMiddleware } from "@clerk/tanstack-react-start/server";
 
 import { renderErrorPage } from "./lib/error-page";
 
@@ -26,5 +31,17 @@ const csrfMiddleware = createCsrfMiddleware({
 
 export const startInstance = createStart(() => ({
   functionMiddleware: [],
-  requestMiddleware: [errorMiddleware, csrfMiddleware],
+  requestMiddleware: [
+    ...(process.env["CLERK_SECRET_KEY"]
+      ? [
+          clerkMiddleware({
+            authorizedParties: [
+              process.env["APP_BASE_URL"] ?? "http://127.0.0.1:5173",
+            ],
+          }),
+        ]
+      : []),
+    errorMiddleware,
+    csrfMiddleware,
+  ],
 }));
