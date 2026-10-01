@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Mail, ShieldCheck } from "lucide-react";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { Show, SignIn } from "@clerk/tanstack-react-start";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -20,6 +21,10 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthScreen() {
+  const clerkConfigured = Boolean(
+    import.meta.env["VITE_CLERK_PUBLISHABLE_KEY"],
+  );
+
   return (
     <div className="min-h-screen bg-secondary">
       <div className="mx-auto flex min-h-screen w-full max-w-[960px] flex-col border-x border-border bg-background">
@@ -31,7 +36,9 @@ function AuthScreen() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
-          <span className="font-display text-base font-extrabold">Warrantly</span>
+          <span className="font-display text-base font-extrabold">
+            Warrantly
+          </span>
         </header>
 
         <main className="grid flex-1 lg:grid-cols-[minmax(0,1fr)_420px]">
@@ -40,8 +47,8 @@ function AuthScreen() {
               Your document vault starts with Google.
             </h1>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground lg:text-base">
-              One sign-in path keeps account recovery, device changes and future sharing rules
-              simpler for a personal paperwork vault.
+              Clerk will handle Google sign-in, account recovery, device changes
+              and future sharing rules for this personal paperwork vault.
             </p>
             <ul className="mt-8 hidden space-y-3 lg:block">
               {[
@@ -49,7 +56,10 @@ function AuthScreen() {
                 "Extracted purchase dates, serial numbers and warranty deadlines.",
                 "Assistant access controlled by the same account identity.",
               ].map((item) => (
-                <li key={item} className="flex items-start gap-3 text-sm font-semibold">
+                <li
+                  key={item}
+                  className="flex items-start gap-3 text-sm font-semibold"
+                >
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   {item}
                 </li>
@@ -61,22 +71,33 @@ function AuthScreen() {
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
               Sign in or create account
             </p>
-            <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm border border-foreground px-4 py-3.5 text-sm font-bold shadow-[0_4px_0_0_var(--color-primary)] active:translate-y-0.5 active:shadow-[0_2px_0_0_var(--color-primary)]">
-              <Mail className="h-4 w-4" />
-              Continue with Google
-            </button>
+            {clerkConfigured ? (
+              <>
+                <Show when="signed-in">
+                  <Navigate to="/home" />
+                </Show>
+                <SignIn
+                  routing="hash"
+                  forceRedirectUrl="/home"
+                  appearance={{
+                    elements: {
+                      rootBox: "mt-4 w-full",
+                      card: "w-full border border-foreground rounded-sm shadow-[0_4px_0_0_var(--color-primary)]",
+                    },
+                  }}
+                />
+              </>
+            ) : (
+              <p className="mt-4 border border-border bg-secondary p-4 text-sm leading-relaxed text-muted-foreground">
+                Add the Clerk publishable and secret keys to your local
+                environment to enable sign-in.
+              </p>
+            )}
 
             <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-              These are demo screens, so nothing is saved. By continuing you'd agree to the
-              terms and privacy notice.
+              Enable Google as the only sign-in method in the Clerk Dashboard.
+              The sign-in options shown here follow that provider configuration.
             </p>
-
-            <Link
-              to="/home"
-              className="mt-6 block text-center text-sm font-bold text-primary underline"
-            >
-              Skip to the dashboard
-            </Link>
           </div>
         </main>
       </div>

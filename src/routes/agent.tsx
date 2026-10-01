@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Bot, Check, Paperclip, Pencil, Send, Sparkles } from "lucide-react";
 import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
 import { agentThread, quickAsks } from "@/lib/demo-data";
+import { requireCurrentUser } from "@/lib/route-auth";
 
 export const Route = createFileRoute("/agent")({
+  beforeLoad: () => requireCurrentUser(),
   head: () => ({
     meta: [
       { title: "Assistant — Warrantly" },
@@ -54,7 +56,10 @@ function AgentScreen() {
               {m.facts ? (
                 <ul className="space-y-1 rounded-sm border border-primary bg-primary/10 p-3">
                   {m.facts.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-xs font-semibold">
+                    <li
+                      key={f}
+                      className="flex items-start gap-2 text-xs font-semibold"
+                    >
                       <Check className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
                       {f}
                     </li>

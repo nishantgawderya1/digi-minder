@@ -1,20 +1,32 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Camera, Check, FileUp, Images, Pencil, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  FileUp,
+  Images,
+  Pencil,
+  Sparkles,
+} from "lucide-react";
 import { useState } from "react";
 import { PhoneShell } from "@/components/phone-shell";
+import { requireCurrentUser } from "@/lib/route-auth";
 
 export const Route = createFileRoute("/scan")({
+  beforeLoad: () => requireCurrentUser(),
   head: () => ({
     meta: [
       { title: "Scan a bill — Warrantly" },
       {
         name: "description",
-        content: "Capture a bill or warranty card and check the details we read from it.",
+        content:
+          "Capture a bill or warranty card and check the details we read from it.",
       },
       { property: "og:title", content: "Scan a bill — Warrantly" },
       {
         property: "og:description",
-        content: "Capture a bill or warranty card and check the details we read from it.",
+        content:
+          "Capture a bill or warranty card and check the details we read from it.",
       },
     ],
   }),
@@ -56,7 +68,9 @@ function ScanScreen() {
             <div className="absolute inset-6 rounded-sm border-2 border-dashed border-background/50" />
             <div className="absolute inset-x-0 bottom-0 p-4 text-center">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-background/70">
-                {step === "reading" ? "Reading your document…" : "Fit the bill in the frame"}
+                {step === "reading"
+                  ? "Reading with Nemotron OCR..."
+                  : "Fit the bill in the frame"}
               </p>
             </div>
             {step === "reading" ? (
@@ -83,12 +97,13 @@ function ScanScreen() {
             </div>
 
             <p className="mt-5 rounded-sm border border-border bg-card p-3 text-xs leading-relaxed text-muted-foreground">
-              Shoot the full page in good light. Warranty cards work best flat, with the
-              purchase date visible.
+              Shoot the full page in good light. Warranty cards work best flat,
+              with the purchase date visible.
             </p>
             <div className="mt-3 hidden rounded-sm border border-border bg-card p-3 text-xs leading-relaxed text-muted-foreground lg:block">
-              Desktop uploads can use camera imports, images or PDFs. The review screen keeps the
-              original document beside extracted details so corrections are easier.
+              Desktop uploads can use camera imports, images or PDFs. Nemotron
+              OCR reads the document, then the review screen keeps the original
+              beside extracted details.
             </div>
           </div>
         </div>
@@ -108,7 +123,8 @@ function ScanScreen() {
             <div className="flex items-center gap-2 rounded-sm border border-primary bg-primary/10 p-3">
               <Sparkles className="h-4 w-4 shrink-0 text-primary" />
               <p className="text-xs font-semibold">
-                7 details read from 1 page. Tap any line to correct it.
+                7 details read by Nemotron OCR from 1 page. Tap any line to
+                correct it.
               </p>
             </div>
 
@@ -122,7 +138,9 @@ function ScanScreen() {
                     <dt className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
                       {label}
                     </dt>
-                    <dd className="mt-0.5 truncate text-sm font-semibold">{value}</dd>
+                    <dd className="mt-0.5 truncate text-sm font-semibold">
+                      {value}
+                    </dd>
                   </div>
                   <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </div>
@@ -134,19 +152,21 @@ function ScanScreen() {
                 Remind me
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {["30 days before", "7 days before", "On the last day"].map((r, i) => (
-                  <span
-                    key={r}
-                    className={`inline-flex items-center gap-1 rounded-sm px-2.5 py-1.5 text-xs font-semibold ${
-                      i < 2
-                        ? "bg-foreground text-background"
-                        : "border border-border text-muted-foreground"
-                    }`}
-                  >
-                    {i < 2 ? <Check className="h-3 w-3" /> : null}
-                    {r}
-                  </span>
-                ))}
+                {["30 days before", "7 days before", "On the last day"].map(
+                  (r, i) => (
+                    <span
+                      key={r}
+                      className={`inline-flex items-center gap-1 rounded-sm px-2.5 py-1.5 text-xs font-semibold ${
+                        i < 2
+                          ? "bg-foreground text-background"
+                          : "border border-border text-muted-foreground"
+                      }`}
+                    >
+                      {i < 2 ? <Check className="h-3 w-3" /> : null}
+                      {r}
+                    </span>
+                  ),
+                )}
               </div>
             </div>
 
@@ -171,11 +191,19 @@ function ScanScreen() {
   );
 }
 
-function Secondary({ icon: Icon, label }: { icon: typeof Camera; label: string }) {
+function Secondary({
+  icon: Icon,
+  label,
+}: {
+  icon: typeof Camera;
+  label: string;
+}) {
   return (
     <button className="grid place-items-center rounded-sm border border-border bg-card py-4 active:bg-secondary">
       <Icon className="h-5 w-5" strokeWidth={2.2} />
-      <span className="mt-1 text-[10px] font-bold uppercase tracking-wider">{label}</span>
+      <span className="mt-1 text-[10px] font-bold uppercase tracking-wider">
+        {label}
+      </span>
     </button>
   );
 }

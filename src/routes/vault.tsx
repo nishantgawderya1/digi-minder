@@ -3,19 +3,23 @@ import { FileText, Search } from "lucide-react";
 import { useState } from "react";
 import { PhoneShell, ScreenHeader, StatusChip } from "@/components/phone-shell";
 import { items, statusLabel, type ItemStatus } from "@/lib/demo-data";
+import { requireCurrentUser } from "@/lib/route-auth";
 
 export const Route = createFileRoute("/vault")({
+  beforeLoad: () => requireCurrentUser(),
   head: () => ({
     meta: [
       { title: "Vault — Warrantly" },
       {
         name: "description",
-        content: "Every item you own, with its bill, warranty card and cover status.",
+        content:
+          "Every item you own, with its bill, warranty card and cover status.",
       },
       { property: "og:title", content: "Vault — Warrantly" },
       {
         property: "og:description",
-        content: "Every item you own, with its bill, warranty card and cover status.",
+        content:
+          "Every item you own, with its bill, warranty card and cover status.",
       },
     ],
   }),
@@ -76,7 +80,9 @@ function VaultScreen() {
                     {item.brand} · {item.category} · {item.price}
                   </p>
                 </div>
-                <StatusChip tone={item.status}>{statusLabel[item.status]}</StatusChip>
+                <StatusChip tone={item.status}>
+                  {statusLabel[item.status]}
+                </StatusChip>
               </div>
 
               <div className="mt-3 h-1.5 w-full rounded-sm bg-secondary">
