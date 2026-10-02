@@ -15,11 +15,17 @@ export default defineConfig(({ mode }) => {
       tanstackStart({
         server: { entry: "server" },
       }),
-      nitro(),
+      nitro({
+        traceDeps: ["pdfjs-dist*", "tesseract.js*", "tesseract.js-core*"],
+        vercel: { functionRules: { "/api/inngest": { maxDuration: 300 } } },
+      }),
       react(),
     ],
     resolve: {
       tsconfigPaths: true,
+    },
+    optimizeDeps: {
+      exclude: ["@napi-rs/canvas"],
     },
   };
 });
