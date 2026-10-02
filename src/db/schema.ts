@@ -18,6 +18,15 @@ export const appUsers = pgTable("app_users", {
   id: text("id").primaryKey(),
   email: text("email"),
   uploadCount: integer("upload_count").default(0).notNull(),
+  assistantCount: integer("assistant_count").default(0).notNull(),
+  assistantWindowStartedAt: timestamp("assistant_window_started_at", {
+    withTimezone: true,
+  })
+    .defaultNow()
+    .notNull(),
+  assistantLastRequestedAt: timestamp("assistant_last_requested_at", {
+    withTimezone: true,
+  }),
   uploadWindowStartedAt: timestamp("upload_window_started_at", {
     withTimezone: true,
   })
