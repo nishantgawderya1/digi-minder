@@ -14,6 +14,10 @@ import { billFieldsSchema, reminderSchedule, saveBillSchema } from "./bills";
 import { extractBillFields } from "./ocr";
 import { runOcr } from "./ocr.server";
 import {
+  extractBillWithAi,
+  EXTRACTION_VERSION,
+} from "./bill-extraction.server";
+import {
   deleteStoredFile,
   finalizeUpload,
   matchesFileSignature,
@@ -131,7 +135,18 @@ export async function loadReview(id: string) {
       filename: document.originalFilename,
       contentType: document.contentType,
       status: document.ocrStatus,
-      error: document.ocrError,
+      error:
+        document.ocrError ||
+        (!pages.length &&
+        document.ocrStatus !== "pending" &&
+        !process.env["NVIDIA_NEMOTRON_OCR_API_KEY"]
+          ? "NVIDIA OCR is not configured on this server. Retry reading to use local OCR, or enter the details manually."
+          : null),
+      extractionMethod:
+        (
+          document.extractedData?.["extraction"] as
+            { method?: string } | undefined
+        )?.method ?? null,
       pageCount: document.pageCount,
       pages,
       fields: fields.success
@@ -254,7 +269,7 @@ export async function readDocumentPage(data: {
       throw new ServiceError("This document isn't available for reading.");
     if (!process.env["NVIDIA_NEMOTRON_OCR_API_KEY"])
       throw new ServiceError(
-        "Automatic reading is unavailable. You can enter the details manually.",
+        "NVIDIA OCR is not configured on this server. Retry reading to use local OCR, or enter the details manually.",
       );
     const bytes = Buffer.from(data.imageDataUrl.split(",")[1]!, "base64");
     if (
@@ -320,7 +335,9 @@ export async function readDocumentPage(data: {
           .set({
             ocrStatus: "failed",
             ocrError:
-              "One or more pages could not be read. Retry or complete the bill manually.",
+              error instanceof ServiceError
+                ? error.message
+                : "One or more pages could not be read. Retry or complete the bill manually.",
             updatedAt: new Date(),
           })
           .where(and(eq(documents.userId, userId), eq(documents.id, data.id))),
@@ -329,6 +346,81 @@ export async function readDocumentPage(data: {
     }
   });
 }
+export async function acceptLocalPage(data: {
+  id: string;
+  pageIndex: number;
+  text: string;
+  confidence: number | null;
+  source: "tesseract" | "pdf-text";
+}) {
+  const userId = await getAuthenticatedUserId();
+  return serviceResult(async () => {
+    const db = getDatabase();
+    const document = await ownedDocument(userId, data.id);
+    if (
+      document.itemId ||
+      document.ocrStatus === "pending" ||
+      data.pageIndex >= document.pageCount
+    )
+      throw new ServiceError("This document isn't available for reading.");
+    const scope = and(
+      eq(documentPages.userId, userId),
+      eq(documentPages.documentId, data.id),
+      eq(documentPages.pageIndex, data.pageIndex),
+    );
+    const [previous] = await db.select().from(documentPages).where(scope);
+    if (previous?.status === "complete") return { pageIndex: data.pageIndex };
+    const [saved] = await db
+      .insert(documentPages)
+      .values({
+        userId,
+        documentId: data.id,
+        pageIndex: data.pageIndex,
+        status: "complete",
+        text: data.text,
+        confidence: data.confidence?.toFixed(4) ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [documentPages.documentId, documentPages.pageIndex],
+        set: {
+          status: "complete",
+          text: data.text,
+          confidence: data.confidence?.toFixed(4) ?? null,
+          updatedAt: new Date(),
+        },
+        setWhere: and(
+          eq(documentPages.userId, userId),
+          or(
+            eq(documentPages.status, "failed"),
+            and(
+              eq(documentPages.status, "processing"),
+              sql`${documentPages.updatedAt} < now() - interval '2 minutes'`,
+            ),
+          ),
+        )!,
+      })
+      .returning({ id: documentPages.id });
+    if (!saved)
+      throw new ServiceError(
+        "This page is already being read. Please retry shortly.",
+      );
+    await db
+      .update(documents)
+      .set({
+        extractedData: sql`coalesce(${documents.extractedData}, '{}'::jsonb) || jsonb_build_object(${data.source === "pdf-text" ? "embeddedTextUsed" : "localOcrUsed"}::text, true)`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(documents.userId, userId),
+          eq(documents.id, data.id),
+          isNull(documents.itemId),
+        ),
+      );
+    return { pageIndex: data.pageIndex };
+  });
+}
+
 export async function finishReading(id: string) {
   const userId = await getAuthenticatedUserId();
   return serviceResult(async () => {
@@ -349,15 +441,74 @@ export async function finishReading(id: string) {
       throw new ServiceError(
         "Some pages still need to be read. You can retry or complete the bill manually.",
       );
-    const rawText = pages.map((page) => page.text ?? "").join("\n\n");
+    const rawText = pages
+      .map((page) => `[Page ${page.pageIndex + 1}]\n${page.text ?? ""}`)
+      .join("\n\n");
+    const prior = z
+      .object({
+        version: z.number(),
+        method: z.string().optional(),
+        attempts: z.number().int(),
+      })
+      .safeParse(document.extractedData?.["extraction"]);
+    if (
+      prior.success &&
+      prior.data.version === EXTRACTION_VERSION &&
+      prior.data.method === "nvidia-llm"
+    )
+      return { id };
+    if (prior.success && prior.data.attempts >= 3)
+      throw new ServiceError(
+        "AI extraction has reached its retry limit. Your extracted text and fields are still available for review.",
+      );
+    const requestId = randomUUID();
+    const scope = and(
+      eq(documents.userId, userId),
+      eq(documents.id, id),
+      isNull(documents.itemId),
+    );
+    // Claim in Postgres, so concurrent retries cannot multiply paid model calls.
+    const [claimed] = await getDatabase()
+      .update(documents)
+      .set({
+        extractedData: sql`coalesce(${documents.extractedData}, '{}'::jsonb) || jsonb_build_object('extraction', jsonb_build_object(
+        'version', ${EXTRACTION_VERSION}::int, 'status', 'processing', 'requestId', ${requestId}::text,
+        'attempts', coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) + ${process.env["NVIDIA_LLM_API_KEY"] ? 1 : 0}::int))`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          scope,
+          sql`coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) < 3`,
+          sql`(coalesce(${documents.extractedData}->'extraction'->>'status', '') <> 'processing' OR ${documents.updatedAt} < now() - interval '2 minutes')`,
+          sql`coalesce(${documents.extractedData}->'extraction'->>'method', '') <> 'nvidia-llm'`,
+        ),
+      )
+      .returning({ extractedData: documents.extractedData });
+    if (!claimed)
+      throw new ServiceError(
+        "Bill details are already being extracted or have reached their retry limit. Please refresh the review.",
+      );
+    const result = await extractBillWithAi(rawText);
     await getDatabase()
       .update(documents)
       .set({
         ocrStatus: "review",
-        ocrError: rawText.trim()
-          ? null
-          : "No readable text was found. Enter the details manually or upload a clearer file.",
-        extractedData: { fields: extractBillFields(rawText) },
+        ocrError: result.warning,
+        extractedData: {
+          ...claimed.extractedData,
+          fields: result.fields,
+          evidence: result.evidence,
+          extraction: {
+            ...(claimed.extractedData?.["extraction"] as Record<
+              string,
+              unknown
+            >),
+            status: "complete",
+            method: result.method,
+            model: result.model,
+          },
+        },
         updatedAt: new Date(),
       })
       .where(
@@ -365,6 +516,7 @@ export async function finishReading(id: string) {
           eq(documents.userId, userId),
           eq(documents.id, id),
           isNull(documents.itemId),
+          sql`${documents.extractedData}->'extraction'->>'requestId' = ${requestId}`,
         ),
       );
     return { id };

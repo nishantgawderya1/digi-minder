@@ -212,6 +212,11 @@ function ReviewScreen() {
           )}
         </div>
         <div className="min-w-0 space-y-5">
+          {data.extractionMethod === "nvidia-llm" ? (
+            <p className="text-xs font-semibold text-primary">
+              AI-extracted details · Awaiting your review
+            </p>
+          ) : null}
           <p className="border-l-2 border-primary pl-3 text-sm leading-relaxed text-muted-foreground">
             {data.status === "pending"
               ? "The original hasn't finished uploading. Upload it again before saving."

@@ -61,6 +61,23 @@ export const finishReading = createServerFn({ method: "POST" })
   .handler(async ({ data }) =>
     (await import("./bill-service.server")).finishReading(data.id),
   );
+export const acceptLocalPage = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      id: z.string().uuid(),
+      pageIndex: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_PAGES - 1),
+      text: z.string().trim().min(1).max(100_000),
+      confidence: z.number().min(0).max(1).nullable(),
+      source: z.enum(["tesseract", "pdf-text"]),
+    }),
+  )
+  .handler(async ({ data }) =>
+    (await import("./bill-service.server")).acceptLocalPage(data),
+  );
 export const saveBill = createServerFn({ method: "POST" })
   .validator(saveBillSchema)
   .handler(async ({ data }) =>

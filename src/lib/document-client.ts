@@ -4,6 +4,7 @@ import {
   completeUpload,
   readDocumentPage,
   finishReading,
+  acceptLocalPage,
   unwrap,
 } from "./bill-functions";
 
@@ -11,6 +12,7 @@ export type PreparedDocument = {
   file: File;
   pageCount: number;
   renderPage: (index: number) => Promise<string>;
+  readText?: (index: number) => Promise<string | null>;
   dispose: () => void;
 };
 
@@ -41,6 +43,10 @@ export async function prepareDocument(source: File): Promise<PreparedDocument> {
     const task = pdfjs.getDocument({
       data: new Uint8Array(await file.arrayBuffer()),
       useSystemFonts: true,
+      wasmUrl: "/pdf-assets/wasm/",
+      standardFontDataUrl: "/pdf-assets/standard_fonts/",
+      cMapUrl: "/pdf-assets/cmaps/",
+      cMapPacked: true,
     });
     let pdf;
     try {
@@ -58,6 +64,22 @@ export async function prepareDocument(source: File): Promise<PreparedDocument> {
     return {
       file,
       pageCount: pdf.numPages,
+      readText: async (index) => {
+        const page = await pdf.getPage(index + 1);
+        const content = await page.getTextContent();
+        const text = content.items
+          .flatMap((item) =>
+            "str" in item ? [item.str + (item.hasEOL ? "\n" : " ")] : [],
+          )
+          .join("")
+          .trim();
+        // Sparse text may be a watermark over a scan; send those pages through OCR.
+        return text.length >= 100 &&
+          /\p{L}/u.test(text) &&
+          !text.includes("\uFFFD")
+          ? text.slice(0, 100_000)
+          : null;
+      },
       dispose: () => {
         void task.destroy();
       },
@@ -131,16 +153,46 @@ export async function readPreparedDocument(
 ) {
   for (let index = 0; index < prepared.pageCount; index++) {
     onProgress(`Reading page ${index + 1} of ${prepared.pageCount}`);
-    unwrap(
-      await readDocumentPage({
-        data: {
-          id,
-          pageIndex: index,
-          imageDataUrl: await prepared.renderPage(index),
-        },
-      }),
-    );
+    const embeddedText = await prepared.readText?.(index).catch(() => null);
+    if (embeddedText) {
+      unwrap(
+        await acceptLocalPage({
+          data: {
+            id,
+            pageIndex: index,
+            text: embeddedText,
+            confidence: null,
+            source: "pdf-text",
+          },
+        }),
+      );
+      continue;
+    }
+    const imageDataUrl = await prepared.renderPage(index);
+    try {
+      unwrap(
+        await readDocumentPage({
+          data: { id, pageIndex: index, imageDataUrl },
+        }),
+      );
+    } catch (cause) {
+      onProgress(`Reading page ${index + 1} locally with Tesseract`);
+      try {
+        const { readWithTesseract } = await import("./tesseract-client");
+        const result = await readWithTesseract(imageDataUrl, onProgress);
+        unwrap(
+          await acceptLocalPage({
+            data: { id, pageIndex: index, ...result, source: "tesseract" },
+          }),
+        );
+      } catch {
+        throw new Error(
+          `${cause instanceof Error ? cause.message : "NVIDIA OCR failed."} Local OCR could not recover this page. Retry or enter the details manually.`,
+        );
+      }
+    }
   }
+  onProgress("Extracting bill details");
   unwrap(await finishReading({ data: { id } }));
 }
 
@@ -176,12 +228,6 @@ export async function uploadDocument(
         "The original hasn't finished uploading. Please retry from Add bill.",
     };
   }
-  if (!upload.ocrAvailable)
-    return {
-      id: upload.id,
-      error:
-        "Automatic reading is unavailable. Enter the details manually or retry later.",
-    };
   try {
     await readPreparedDocument(upload.id, prepared, onProgress);
     return { id: upload.id, error: null };
