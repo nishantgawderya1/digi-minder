@@ -44,6 +44,9 @@ async function upload(page: Page) {
   await expect(
     page.getByRole("heading", { name: "Check the details" }),
   ).toBeVisible();
+  await expect(page.getByText("You can return later")).not.toBeVisible({
+    timeout: 110_000,
+  });
 }
 async function noOverflow(page: Page) {
   expect(
@@ -148,6 +151,9 @@ test("digital PDF text preserves exact identifiers without OCR", async ({
   await expect(
     page.getByRole("heading", { name: "Check the details" }),
   ).toBeVisible();
+  await expect(page.getByText("You can return later")).not.toBeVisible({
+    timeout: 110_000,
+  });
   await expect(page.getByLabel("Bill / item name")).toHaveValue(
     "Exact PDF item",
   );
@@ -248,6 +254,9 @@ test("Tesseract reads a real image locally when NVIDIA OCR fails", async ({
   await expect(
     page.getByRole("heading", { name: "Check the details" }),
   ).toBeVisible({ timeout: 110_000 });
+  await expect(page.getByText("You can return later")).not.toBeVisible({
+    timeout: 110_000,
+  });
   await expect(page.getByLabel("Serial number / IMEI")).toHaveValue("001234");
   await expect(page.getByLabel("Bill / item name")).toHaveValue("Test lamp");
   await noOverflow(page);
@@ -283,9 +292,141 @@ test("camera denial has a useful recovery message", async ({ page }) => {
     page.getByRole("button", { name: "Document", exact: true }),
   ).toBeEnabled();
 });
+test("background review preserves edits, shows source evidence, and survives navigation", async ({
+  page,
+}) => {
+  if (test.info().project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/scan");
+  await page.evaluate(() => sessionStorage.setItem("worker-paused", "true"));
+  await interceptUpload(page);
+  await page.getByLabel("Choose a bill image").setInputFiles({
+    name: "bill.png",
+    mimeType: "image/png",
+    buffer: await receiptImage(page),
+  });
+  await expect(page.getByText("You can return later")).toBeVisible();
+  await page.getByLabel("Bill / item name").fill("My corrected lamp");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Back to vault", exact: true }).click();
+  await expect(page.getByText("Reading in background")).toBeVisible();
+  await page.getByRole("link", { name: /bill.png/ }).click();
+  await page.evaluate(() => sessionStorage.removeItem("worker-paused"));
+  await expect(page.getByText("You can return later")).not.toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByLabel("Bill / item name")).toHaveValue(
+    "My corrected lamp",
+  );
+  await expect(page.getByLabel("Serial number / IMEI")).toHaveValue("001234");
+  await page.getByText("From original · Page 1", { exact: true }).click();
+  await expect(
+    page.getByText("Serial number: 001234", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Bill / item name")).toHaveValue(
+    "My corrected lamp",
+  );
+  await noOverflow(page);
+  await page.screenshot({
+    path: test.info().outputPath("review-evidence.png"),
+    fullPage: true,
+  });
+});
+test("autosave errors preserve changes and retry the latest values", async ({
+  page,
+}) => {
+  await page.goto("/scan");
+  await upload(page);
+  await page.evaluate(() => sessionStorage.setItem("autosave-failure", "true"));
+  await page.getByLabel("Bill / item name").fill("First correction");
+  await expect(page.getByRole("alert")).toContainText(
+    "Changes couldn't be saved",
+  );
+  await page.getByLabel("Bill / item name").fill("Latest correction");
+  await page.evaluate(() => sessionStorage.removeItem("autosave-failure"));
+  await page.getByRole("button", { name: "Retry saving" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Bill / item name")).toHaveValue(
+    "Latest correction",
+  );
+});
+test("email preferences persist and reminders can be snoozed and dismissed", async ({
+  page,
+}) => {
+  if (test.info().project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/reminders");
+  await page.getByLabel("Email reminders", { exact: true }).check();
+  await page.getByLabel("Reminder timezone").selectOption("Asia/Kolkata");
+  await page.getByLabel("Reminder time", { exact: true }).selectOption("10");
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByLabel("Email reminders", { exact: true }),
+  ).toBeChecked();
+  await expect(page.getByLabel("Reminder timezone")).toHaveValue(
+    "Asia/Kolkata",
+  );
+  await expect(page.getByLabel("Reminder time", { exact: true })).toHaveValue(
+    "10",
+  );
+  await page.evaluate(() =>
+    sessionStorage.setItem(
+      "test-reminders",
+      JSON.stringify([
+        {
+          id: "f22b16c3-687a-436f-87ae-1a1bdfe68503",
+          itemId: "ab096c6d-c5c6-42c7-959a-0f3d46591a4f",
+          name: "My lamp",
+          deadlineType: "warranty",
+          remindAt: new Date().toISOString(),
+          snoozedUntil: null,
+          status: "scheduled",
+          warrantyExpiresAt: "2099-10-01",
+          returnExpiresAt: null,
+        },
+      ]),
+    ),
+  );
+  await page.reload();
+  await page.getByLabel("Snooze My lamp").selectOption("1");
+  await expect(page.getByText("No reminders in this view.")).toBeVisible();
+  await page.getByRole("tab", { name: "Snoozed" }).click();
+  await expect(
+    page.getByRole("link", { name: "My lamp", exact: true }),
+  ).toBeVisible();
+  await noOverflow(page);
+  await page.screenshot({
+    path: test.info().outputPath("reminders.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Dismiss My lamp" }).click();
+  await expect(page.getByText("No reminders in this view.")).toBeVisible();
+});
+test("discarding a draft with failed autosave leaves review without losing the delete", async ({
+  page,
+}) => {
+  await page.goto("/scan");
+  await upload(page);
+  await page.evaluate(() => sessionStorage.setItem("autosave-failure", "true"));
+  await page.getByLabel("Bill / item name").fill("Discard this edit");
+  await expect(page.getByRole("alert")).toContainText(
+    "Changes couldn't be saved",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete unfinished bill" }).click();
+  await expect(page).toHaveURL(/\/vault$/);
+  await expect(page.getByText("No saved bills yet.")).toBeVisible();
+});
 test("multi-page PDFs are rasterized page by page, and oversized page counts are rejected", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   for (let i = 0; i < 2; i++)
@@ -301,8 +442,10 @@ test("multi-page PDFs are rasterized page by page, and oversized page counts are
   });
   await expect(
     page.getByRole("heading", { name: "Check the details" }),
-  ).toBeVisible();
-  await expect(page.getByText("Extracted text (2/2 pages)")).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Extracted text (2/2 pages)")).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.getByLabel("Serial number / IMEI")).toHaveValue("001234");
   await noOverflow(page);
   await page.screenshot({

@@ -15,6 +15,8 @@ export default defineConfig({
       name: "test-only-service-boundaries",
       enforce: "pre",
       resolveId(source) {
+        if (source.endsWith("/notification-functions"))
+          return local("./notifications.ts");
         if (source.endsWith("/assistant-functions"))
           return local("./assistant.ts");
         if (source.endsWith("/bill-functions") || source === "./bill-functions")

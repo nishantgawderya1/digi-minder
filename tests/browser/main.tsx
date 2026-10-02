@@ -11,6 +11,7 @@ import { Route as scan } from "@/routes/scan";
 import { Route as review } from "@/routes/review.$documentId";
 import { Route as item } from "@/routes/item.$itemId";
 import { Route as agent } from "@/routes/agent";
+import { Route as reminders } from "@/routes/reminders";
 import "@/styles.css";
 
 const root = createRootRoute({ component: Outlet });
@@ -21,6 +22,7 @@ const routes = [
   [review, "/review/$documentId"],
   [item, "/item/$itemId"],
   [agent, "/agent"],
+  [reminders, "/reminders"],
 ] as const;
 // Production components, isolated service doubles. This config is never used by the app build.
 const routeTree = root.addChildren(
