@@ -16,6 +16,7 @@ import { Route as HomeRouteImport } from './routes/home'
 import { Route as ScanRouteImport } from './routes/scan'
 import { Route as VaultRouteImport } from './routes/vault'
 import { Route as ItemItemIdRouteImport } from './routes/item.$itemId'
+import { Route as ReviewDocumentIdRouteImport } from './routes/review.$documentId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,6 +53,11 @@ const ItemItemIdRoute = ItemItemIdRouteImport.update({
   path: '/item/$itemId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReviewDocumentIdRoute = ReviewDocumentIdRouteImport.update({
+  id: '/review/$documentId',
+  path: '/review/$documentId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -61,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/scan': typeof ScanRoute
   '/vault': typeof VaultRoute
   '/item/$itemId': typeof ItemItemIdRoute
+  '/review/$documentId': typeof ReviewDocumentIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByTo {
   '/scan': typeof ScanRoute
   '/vault': typeof VaultRoute
   '/item/$itemId': typeof ItemItemIdRoute
+  '/review/$documentId': typeof ReviewDocumentIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -80,13 +88,29 @@ export interface FileRoutesById {
   '/scan': typeof ScanRoute
   '/vault': typeof VaultRoute
   '/item/$itemId': typeof ItemItemIdRoute
+  '/review/$documentId': typeof ReviewDocumentIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/agent' | '/auth' | '/home' | '/scan' | '/vault' | '/item/$itemId'
+    | '/'
+    | '/agent'
+    | '/auth'
+    | '/home'
+    | '/scan'
+    | '/vault'
+    | '/item/$itemId'
+    | '/review/$documentId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/agent' | '/auth' | '/home' | '/scan' | '/vault' | '/item/$itemId'
+  to:
+    | '/'
+    | '/agent'
+    | '/auth'
+    | '/home'
+    | '/scan'
+    | '/vault'
+    | '/item/$itemId'
+    | '/review/$documentId'
   id:
     | '__root__'
     | '/'
@@ -96,6 +120,7 @@ export interface FileRouteTypes {
     | '/scan'
     | '/vault'
     | '/item/$itemId'
+    | '/review/$documentId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +131,7 @@ export interface RootRouteChildren {
   ScanRoute: typeof ScanRoute
   VaultRoute: typeof VaultRoute
   ItemItemIdRoute: typeof ItemItemIdRoute
+  ReviewDocumentIdRoute: typeof ReviewDocumentIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -159,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItemItemIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/review/$documentId': {
+      id: '/review/$documentId'
+      path: '/review/$documentId'
+      fullPath: '/review/$documentId'
+      preLoaderRoute: typeof ReviewDocumentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -170,6 +203,7 @@ const rootRouteChildren: RootRouteChildren = {
   ScanRoute: ScanRoute,
   VaultRoute: VaultRoute,
   ItemItemIdRoute: ItemItemIdRoute,
+  ReviewDocumentIdRoute: ReviewDocumentIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

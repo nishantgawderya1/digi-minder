@@ -1,377 +1,325 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Camera,
-  Check,
-  FileText,
   FileUp,
   Images,
-  Pencil,
-  Sparkles,
+  LoaderCircle,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PhoneShell } from "@/components/phone-shell";
+import { DocumentPreview } from "@/components/document-preview";
 import { requireCurrentUser } from "@/lib/route-auth";
+import { prepareDocument, uploadDocument } from "@/lib/document-client";
 
 export const Route = createFileRoute("/scan")({
   beforeLoad: () => requireCurrentUser(),
-  head: () => ({
-    meta: [
-      { title: "Scan a bill — Warrantly" },
-      {
-        name: "description",
-        content:
-          "Capture a bill or warranty card and check the details we read from it.",
-      },
-      { property: "og:title", content: "Scan a bill — Warrantly" },
-      {
-        property: "og:description",
-        content:
-          "Capture a bill or warranty card and check the details we read from it.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Add a bill - Warrantly" }] }),
   component: ScanScreen,
 });
 
-const readFields = [
-  ["Item", "FrontLoad 7kg Washing Machine"],
-  ["Brand", "Bosch"],
-  ["Purchase date", "12 Apr 2026"],
-  ["Amount", "₹34,990"],
-  ["Serial / model", "BSH-WM-7741-2026"],
-  ["Warranty", "6 months · till 12 Oct 2026"],
-  ["Seller", "Croma, Andheri West"],
-];
-
-function ScanScreen() {
-  const [step, setStep] = useState<"capture" | "reading" | "review">("capture");
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+export function ScanScreen() {
+  const navigate = useNavigate();
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraPending, setCameraPending] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [cameraError, setCameraError] = useState("");
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const documentInputRef = useRef<HTMLInputElement>(null);
+  const video = useRef<HTMLVideoElement>(null);
+  const stream = useRef<MediaStream | null>(null);
+  const cameraRequest = useRef(0);
+  const mounted = useRef(true);
+  const fileLock = useRef(false);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const documentInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (videoRef.current && cameraStream) {
-      videoRef.current.srcObject = cameraStream;
-    }
-  }, [cameraStream]);
-
+    mounted.current = true;
+    const generation = cameraRequest;
+    return () => {
+      mounted.current = false;
+      generation.current++;
+      stream.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
   useEffect(() => {
-    if (!selectedFile) {
-      setPreviewUrl(null);
-      return;
-    }
-
+    if (video.current && cameraActive) video.current.srcObject = stream.current;
+  }, [cameraActive]);
+  useEffect(() => {
+    if (!selectedFile) return;
     const url = URL.createObjectURL(selectedFile);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [selectedFile]);
 
-  useEffect(
-    () => () => cameraStream?.getTracks().forEach((track) => track.stop()),
-    [cameraStream],
-  );
-
   const stopCamera = () => {
-    cameraStream?.getTracks().forEach((track) => track.stop());
-    setCameraStream(null);
+    cameraRequest.current++;
+    stream.current?.getTracks().forEach((track) => track.stop());
+    stream.current = null;
+    setCameraActive(false);
+    setCameraReady(false);
+    setCameraPending(false);
   };
-
   const startCamera = async () => {
-    setCameraError("");
+    if (cameraPending || cameraActive || busy) return;
+    setError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError(
-        "Camera access is unavailable. Choose an image to continue.",
+      setError(
+        "Camera access requires HTTPS or localhost. You can also choose a file.",
       );
       return;
     }
-
+    const requestId = ++cameraRequest.current;
+    setCameraPending(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const nextStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: "environment" } },
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1440 },
+        },
       });
-      setCameraStream(stream);
-    } catch (error) {
-      setCameraError(
-        error instanceof DOMException && error.name === "NotAllowedError"
-          ? "Camera permission was blocked. Allow camera access in your browser settings, or choose an image instead."
-          : "Could not open the camera. Choose an image instead.",
-      );
+      if (!mounted.current || requestId !== cameraRequest.current) {
+        nextStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stream.current = nextStream;
+      setCameraActive(true);
+    } catch (cause) {
+      if (mounted.current && requestId === cameraRequest.current)
+        setError(
+          cause instanceof DOMException && cause.name === "NotAllowedError"
+            ? "Camera access was blocked. Allow it in your browser's site settings or choose a file."
+            : "The camera couldn't be opened. Close other camera apps or choose a file.",
+        );
+    } finally {
+      if (mounted.current && requestId === cameraRequest.current)
+        setCameraPending(false);
     }
   };
-
-  const beginReview = (file: File) => {
-    setSelectedFile(file);
-    setCameraError("");
+  const handleFile = async (file: File) => {
+    if (fileLock.current) return;
+    fileLock.current = true;
     stopCamera();
-    setStep("reading");
-    window.setTimeout(() => setStep("review"), 900);
+    setError(null);
+    setBusy(true);
+    setProgress("Preparing document");
+    let prepared;
+    try {
+      prepared = await prepareDocument(file);
+      setSelectedFile(prepared.file);
+      const result = await uploadDocument(prepared, (message) => {
+        if (mounted.current) setProgress(message);
+      });
+      if (mounted.current)
+        await navigate({
+          to: "/review/$documentId",
+          params: { documentId: result.id },
+        });
+    } catch (cause) {
+      if (mounted.current)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "This file couldn't be uploaded. Please retry.",
+        );
+    } finally {
+      prepared?.dispose();
+      fileLock.current = false;
+      if (mounted.current) {
+        setBusy(false);
+        setProgress("");
+      }
+    }
   };
-
-  const capturePhoto = () => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) return;
-
+  const takePhoto = async () => {
+    if (!video.current?.videoWidth || !cameraReady || busy) return;
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")?.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          beginReview(
-            new File([blob], `bill-${Date.now()}.jpg`, { type: "image/jpeg" }),
-          );
-        }
-      },
-      "image/jpeg",
-      0.92,
+    canvas.width = video.current.videoWidth;
+    canvas.height = video.current.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setError("The photo couldn't be captured. Please try again.");
+      return;
+    }
+    context.drawImage(video.current, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.94),
     );
+    canvas.width = 0;
+    canvas.height = 0;
+    if (blob && mounted.current)
+      await handleFile(
+        new File([blob], `bill-${Date.now()}.jpg`, { type: "image/jpeg" }),
+      );
+    else if (mounted.current)
+      setError("The photo couldn't be captured. Please try again.");
   };
 
   return (
     <PhoneShell>
-      <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-5 py-4">
+      <header className="flex items-center gap-3 border-b border-border px-5 py-4 lg:px-8">
         <Link
           to="/home"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-border"
-          aria-label="Back"
+          title="Back to Today"
+          aria-label="Back to Today"
+          className="grid h-9 w-9 place-items-center rounded-sm border border-border"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="min-w-0 truncate text-base font-extrabold">
-          {step === "review" ? "Check the details" : "Add a document"}
-        </h1>
+        <h1 className="text-base font-extrabold">Add a bill</h1>
       </header>
-
-      {step !== "review" ? (
-        <div className="grid gap-5 px-5 pt-5 lg:grid-cols-[minmax(300px,460px)_minmax(0,1fr)] lg:items-start lg:px-8">
-          <div className="relative aspect-[3/4] overflow-hidden rounded-sm border border-foreground bg-foreground lg:min-h-[560px]">
-            {cameraStream ? (
+      <div className="grid min-w-0 gap-6 px-5 pt-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:px-8">
+        {busy && selectedFile ? (
+          <DocumentPreview
+            url={previewUrl}
+            filename={selectedFile.name}
+            contentType={selectedFile.type}
+          />
+        ) : (
+          <div className="relative aspect-[3/4] overflow-hidden rounded-sm border border-foreground bg-foreground">
+            {cameraActive ? (
               <video
-                ref={videoRef}
+                ref={video}
                 autoPlay
                 playsInline
                 muted
-                className="absolute inset-0 h-full w-full object-cover"
+                onCanPlay={() => setCameraReady(true)}
+                className="absolute inset-0 h-full w-full object-contain"
                 aria-label="Live camera preview"
               />
             ) : (
               <div className="hatch absolute inset-0 opacity-30" />
             )}
-            <div className="pointer-events-none absolute inset-6 rounded-sm border-2 border-dashed border-background/50" />
-            <div className="absolute inset-x-0 bottom-0 p-4 text-center">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-background/70">
-                {step === "reading"
-                  ? "Reading with Nemotron OCR..."
-                  : cameraStream
-                    ? "Fit the bill in the frame"
-                    : "Open camera or choose a file"}
-              </p>
-            </div>
-            {step === "reading" ? (
-              <div className="absolute inset-x-6 top-1/3 h-0.5 animate-pulse bg-accent" />
-            ) : null}
-          </div>
-
-          <div className="lg:sticky lg:top-6 lg:pt-2">
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) beginReview(file);
-                event.currentTarget.value = "";
-              }}
-            />
-            <input
-              ref={documentInputRef}
-              type="file"
-              accept="application/pdf,.pdf,image/*"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) beginReview(file);
-                event.currentTarget.value = "";
-              }}
-            />
-            <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
-              <Secondary
-                icon={Images}
-                label="Image"
-                onClick={() => imageInputRef.current?.click()}
-              />
-              <button
-                onClick={cameraStream ? capturePhoto : startCamera}
-                className="grid place-items-center rounded-sm bg-primary py-4 text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] active:translate-y-0.5 active:shadow-[0_2px_0_0_var(--color-foreground)] lg:min-h-24"
-              >
-                <Camera className="h-6 w-6" strokeWidth={2.2} />
-                <span className="mt-1 text-[10px] font-bold uppercase tracking-wider">
-                  {cameraStream ? "Take photo" : "Camera"}
-                </span>
-              </button>
-              <Secondary
-                icon={FileUp}
-                label="Document"
-                onClick={() => documentInputRef.current?.click()}
-              />
-            </div>
-
-            {cameraError ? (
-              <p
-                role="alert"
-                className="mt-3 border border-destructive/40 bg-destructive/5 p-3 text-xs leading-relaxed text-destructive"
-              >
-                {cameraError}
-              </p>
-            ) : null}
-
-            <p className="mt-5 rounded-sm border border-border bg-card p-3 text-xs leading-relaxed text-muted-foreground">
-              Camera access starts only after you tap Camera. Allow the browser
-              permission when prompted, or choose an image or PDF.
+            <div className="pointer-events-none absolute inset-6 border-2 border-dashed border-background/50" />
+            <p className="absolute inset-x-0 bottom-4 px-6 text-center text-xs font-semibold text-background">
+              {cameraActive
+                ? "Fit the full bill in the frame"
+                : "Ready for your next receipt"}
             </p>
-            <div className="mt-3 hidden rounded-sm border border-border bg-card p-3 text-xs leading-relaxed text-muted-foreground lg:block">
-              Images and PDFs can be previewed locally. OCR extraction and vault
-              storage still need to be connected.
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-5 px-5 pt-5 lg:grid-cols-[minmax(320px,0.9fr)_minmax(360px,1fr)] lg:items-start lg:px-8">
-          <div className="hidden overflow-hidden rounded-sm border border-foreground bg-foreground lg:block">
-            <div className="relative aspect-[3/4]">
-              {selectedFile?.type.startsWith("image/") && previewUrl ? (
-                <img
-                  src={previewUrl}
-                  alt="Selected bill preview"
-                  className="absolute inset-0 h-full w-full object-contain"
-                />
-              ) : selectedFile?.type === "application/pdf" && previewUrl ? (
-                <iframe
-                  src={previewUrl}
-                  title={`Preview of ${selectedFile.name}`}
-                  className="absolute inset-0 h-full w-full bg-background"
-                />
-              ) : (
-                <div className="absolute inset-0 grid place-items-center bg-secondary p-6 text-center text-foreground">
-                  <div>
-                    <FileText className="mx-auto h-10 w-10" />
-                    <p className="mt-3 break-all text-sm font-semibold">
-                      {selectedFile?.name ?? "Document preview"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {selectedFile?.type === "application/pdf"
-                        ? "PDF document"
-                        : "Document"}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 rounded-sm border border-primary bg-primary/10 p-3">
-              <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-              <p className="text-xs font-semibold">
-                {selectedFile?.name ?? "Bill captured"} · Local preview only.
-                OCR extraction and vault storage are not connected yet.
-              </p>
-            </div>
-
-            <dl className="divide-y divide-border rounded-sm border border-border bg-card">
-              {readFields.map(([label, value]) => (
-                <div
-                  key={label}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-3"
-                >
-                  <div className="min-w-0">
-                    <dt className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                      {label}
-                    </dt>
-                    <dd className="mt-0.5 truncate text-sm font-semibold">
-                      {value}
-                    </dd>
-                  </div>
-                  <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </div>
-              ))}
-            </dl>
-
-            <div className="rounded-sm border border-border bg-card p-3.5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                Remind me
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {["30 days before", "7 days before", "On the last day"].map(
-                  (r, i) => (
-                    <span
-                      key={r}
-                      className={`inline-flex items-center gap-1 rounded-sm px-2.5 py-1.5 text-xs font-semibold ${
-                        i < 2
-                          ? "bg-foreground text-background"
-                          : "border border-border text-muted-foreground"
-                      }`}
-                    >
-                      {i < 2 ? <Check className="h-3 w-3" /> : null}
-                      {r}
-                    </span>
-                  ),
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-2">
+            {cameraActive || cameraPending ? (
               <button
-                onClick={() => {
-                  stopCamera();
-                  setSelectedFile(null);
-                  setStep("capture");
-                }}
-                className="rounded-sm border border-foreground px-4 py-3 text-sm font-bold"
+                onClick={stopCamera}
+                title="Close camera"
+                aria-label="Close camera"
+                className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-sm bg-background text-foreground"
               >
-                Retake
+                <X className="h-5 w-5" />
               </button>
-              <Link
-                to="/home"
-                className="flex-1 rounded-sm bg-primary px-4 py-3 text-center text-sm font-bold text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] active:translate-y-0.5 active:shadow-[0_2px_0_0_var(--color-foreground)]"
-              >
-                Save to vault
-              </Link>
-            </div>
+            ) : null}
           </div>
+        )}
+        <div className="min-w-0 space-y-5 lg:pt-2">
+          <div>
+            <h2 className="text-xl font-extrabold">
+              Keep the original. Check every detail.
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Bills, invoices and warranty cards.
+            </p>
+          </div>
+          <input
+            ref={imageInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            aria-label="Choose a bill image"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void handleFile(file);
+            }}
+          />
+          <input
+            ref={documentInput}
+            type="file"
+            accept="application/pdf,image/jpeg,image/png,image/webp"
+            aria-label="Choose a bill document"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void handleFile(file);
+            }}
+          />
+          <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+            <button
+              onClick={cameraActive ? takePhoto : startCamera}
+              disabled={busy || cameraPending || (cameraActive && !cameraReady)}
+              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-sm bg-primary px-2 py-3 text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] disabled:opacity-50 lg:flex-row"
+            >
+              {cameraPending ? (
+                <LoaderCircle className="h-5 w-5 animate-spin" />
+              ) : (
+                <Camera className="h-5 w-5" />
+              )}
+              <span className="text-xs font-bold">
+                {cameraPending
+                  ? "Opening..."
+                  : cameraActive
+                    ? "Take photo"
+                    : "Camera"}
+              </span>
+            </button>
+            <button
+              onClick={() => imageInput.current?.click()}
+              disabled={busy}
+              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-sm border border-border bg-card px-2 py-3 disabled:opacity-50 lg:flex-row"
+            >
+              <Images className="h-5 w-5" />
+              <span className="text-xs font-bold">Image</span>
+            </button>
+            <button
+              onClick={() => documentInput.current?.click()}
+              disabled={busy}
+              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-sm border border-border bg-card px-2 py-3 disabled:opacity-50 lg:flex-row"
+            >
+              <FileUp className="h-5 w-5" />
+              <span className="text-xs font-bold">Document</span>
+            </button>
+          </div>
+          <button
+            disabled={busy}
+            onClick={() => documentInput.current?.click()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const file = event.dataTransfer.files[0];
+              if (file && !busy) void handleFile(file);
+            }}
+            className="hidden min-h-28 w-full flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border p-4 text-sm text-muted-foreground lg:flex"
+          >
+            <FileUp className="h-6 w-6" />
+            Drop a file here
+          </button>
+          <p className="text-xs text-muted-foreground">
+            JPG, PNG, WebP or PDF · Up to 15 MB and 10 pages
+          </p>
+          {busy ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-3 border-y border-border py-4 text-sm font-semibold"
+            >
+              <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-primary" />
+              {progress}
+            </div>
+          ) : null}
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-sm border border-destructive/40 p-3 text-sm text-destructive"
+            >
+              {error}
+            </p>
+          ) : null}
         </div>
-      )}
+      </div>
     </PhoneShell>
-  );
-}
-
-function Secondary({
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  icon: typeof Camera;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="grid place-items-center rounded-sm border border-border bg-card py-4 active:bg-secondary lg:grid-cols-[auto_1fr] lg:justify-items-start lg:gap-3 lg:px-5"
-    >
-      <Icon className="h-5 w-5" strokeWidth={2.2} />
-      <span className="mt-1 text-[10px] font-bold uppercase tracking-wider">
-        {label}
-      </span>
-    </button>
   );
 }

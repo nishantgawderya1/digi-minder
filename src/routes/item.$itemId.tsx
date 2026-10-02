@@ -1,169 +1,230 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { useState } from "react";
 import {
-  ArrowLeft,
-  Bell,
-  Bot,
-  Download,
-  FileText,
-  Mail,
-  Phone,
-  ShieldCheck,
-} from "lucide-react";
-import { PhoneShell, StatusChip } from "@/components/phone-shell";
-import { items, statusLabel } from "@/lib/demo-data";
+  createFileRoute,
+  Link,
+  useNavigate,
+  useRouter,
+} from "@tanstack/react-router";
+import { ArrowLeft, Download, FileText, Pencil, Trash2, X } from "lucide-react";
+import { PhoneShell, ScreenHeader, StatusChip } from "@/components/phone-shell";
+import { BillForm } from "@/components/bill-form";
 import { requireCurrentUser } from "@/lib/route-auth";
+import {
+  getDocumentLink,
+  loadBill,
+  removeBill,
+  saveBill,
+  unwrap,
+} from "@/lib/bill-functions";
+import {
+  billFieldsSchema,
+  displayDate,
+  money,
+  warrantyState,
+  type BillFields,
+} from "@/lib/bills";
 
 export const Route = createFileRoute("/item/$itemId")({
   beforeLoad: () => requireCurrentUser(),
-  loader: ({ params }) => {
-    const item = items.find((i) => i.id === params.itemId);
-    if (!item) throw notFound();
-    return { item };
-  },
-  head: ({ loaderData }) => {
-    if (!loaderData) {
-      return {
-        meta: [
-          { title: "Item not found — Warrantly" },
-          { name: "robots", content: "noindex" },
-        ],
-      };
-    }
-    const title = `${loaderData.item.name} — Warrantly`;
-    const description = `Bill, warranty card and support contacts for your ${loaderData.item.brand} ${loaderData.item.category.toLowerCase()}.`;
-    return {
-      meta: [
-        { title },
-        { name: "description", content: description },
-        { property: "og:title", content: title },
-        { property: "og:description", content: description },
-      ],
-    };
-  },
+  loader: async ({ params }) =>
+    unwrap(await loadBill({ data: { id: params.itemId } })),
   component: ItemScreen,
 });
-
 function ItemScreen() {
-  const { item } = Route.useLoaderData();
-
+  const { bill, documents } = Route.useLoaderData();
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const navigate = useNavigate();
+  const cover = warrantyState(bill);
+  const initial = billFieldsSchema.strip().parse(bill);
+  async function save(fields: BillFields) {
+    setBusy(true);
+    setError(null);
+    try {
+      unwrap(
+        await saveBill({ data: { id: bill.id, documentId: null, fields } }),
+      );
+      await router.invalidate();
+      setEditing(false);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Couldn't save this bill.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    if (
+      !window.confirm(
+        `Delete "${bill.name}" and its original documents? This cannot be undone.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      unwrap(await removeBill({ data: { id: bill.id } }));
+      await navigate({ to: "/vault" });
+      await router.invalidate();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Couldn't delete this bill.",
+      );
+      setBusy(false);
+    }
+  }
+  async function download(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = unwrap(
+        await getDocumentLink({ data: { id, download: true } }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.rel = "noopener";
+      anchor.click();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Couldn't open the original.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  const details = [
+    ["Store / retailer", bill.retailer],
+    ["Brand", bill.brand],
+    ["Invoice number", bill.invoiceNumber],
+    ["Serial / IMEI", bill.serialNumber],
+    ["Model number", bill.modelNumber],
+    ["Barcode / EAN / UPC", bill.barcode],
+    ["Category", bill.category],
+    ["Purchased", displayDate(bill.purchaseDate)],
+    ["Amount paid", money(bill.purchasePrice, bill.currency)],
+    ["Warranty ends", displayDate(bill.warrantyExpiresAt)],
+    ["Return deadline", displayDate(bill.returnExpiresAt)],
+  ];
   return (
     <PhoneShell>
-      <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-5 py-4 lg:px-8">
-        <Link
-          to="/vault"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-border"
-          aria-label="Back"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <h1 className="min-w-0 truncate text-base font-extrabold">
-          {item.brand}
-        </h1>
-      </header>
-
-      <section className="hatch border-b border-border px-5 py-6 lg:px-8 lg:py-8">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-          <h2 className="min-w-0 text-[22px] font-extrabold leading-tight">
-            {item.name}
-          </h2>
-          <StatusChip tone={item.status}>{statusLabel[item.status]}</StatusChip>
+      <ScreenHeader
+        eyebrow="Saved bill"
+        title={bill.name}
+        right={
+          <Link
+            to="/vault"
+            title="Back to vault"
+            aria-label="Back to vault"
+            className="grid h-10 w-10 place-items-center border border-border"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+        }
+      />
+      <div className="space-y-6 p-5 lg:p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <StatusChip tone={cover.status}>{cover.label}</StatusChip>
+          <div className="flex gap-2">
+            <button
+              aria-label={editing ? "Cancel editing" : "Edit bill"}
+              title={editing ? "Cancel editing" : "Edit bill"}
+              disabled={busy}
+              onClick={() => {
+                setEditing(!editing);
+                setError(null);
+              }}
+              className="grid h-10 w-10 place-items-center border border-border disabled:opacity-50"
+            >
+              {editing ? (
+                <X className="h-4 w-4" />
+              ) : (
+                <Pencil className="h-4 w-4" />
+              )}
+            </button>
+            <button
+              aria-label="Delete bill"
+              title="Delete bill"
+              disabled={busy}
+              onClick={() => void remove()}
+              className="grid h-10 w-10 place-items-center border border-destructive/30 text-destructive disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {item.status === "expired"
-            ? "Warranty cover has ended."
-            : `${item.monthsLeft} of ${item.warrantyMonths} months of cover left.`}
-        </p>
-      </section>
-
-      <div className="grid gap-6 px-5 pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:px-8">
-        <div className="space-y-6">
-          <dl className="divide-y divide-border rounded-sm border border-border bg-card">
-            {[
-              ["Purchased", item.purchased],
-              ["Amount paid", item.price],
-              ["Serial / model", item.serial],
-              ["Warranty length", `${item.warrantyMonths} months`],
-              ["Category", item.category],
-            ].map(([k, v]) => (
-              <div
-                key={k}
-                className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3"
-              >
-                <dt className="min-w-0 truncate text-sm text-muted-foreground">
-                  {k}
-                </dt>
-                <dd className="shrink-0 text-sm font-semibold">{v}</dd>
-              </div>
-            ))}
-          </dl>
-
-          <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Documents
-            </h3>
-            <ul className="mt-3 space-y-2">
-              {item.docs.map((d) => (
-                <li
-                  key={d}
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-sm border border-border bg-card px-3.5 py-3"
-                >
-                  <FileText className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="min-w-0 truncate text-sm font-semibold">
-                    {d}
-                  </span>
-                  <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-
-        <aside className="space-y-6">
-          <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Who to escalate to
-            </h3>
-            <div className="mt-3 rounded-sm border border-border bg-card p-4">
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-sm bg-foreground text-background">
-                  <ShieldCheck className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold">
-                    {item.support.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {item.support.role}
-                  </p>
+        {editing ? (
+          <BillForm
+            initial={initial}
+            onSave={(fields) => void save(fields)}
+            saving={busy}
+            error={error}
+          />
+        ) : (
+          <>
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+            <dl className="grid gap-x-6 gap-y-5 border-y border-border py-6 sm:grid-cols-2">
+              {details.map(([label, value]) => (
+                <div className="min-w-0" key={label}>
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="mt-1 break-words text-sm font-semibold">
+                    {value || "Not recorded"}
+                  </dd>
                 </div>
-              </div>
-              <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-                <p className="flex items-center gap-2 truncate">
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
-                  {item.support.email}
+              ))}
+            </dl>
+            {bill.notes ? (
+              <section>
+                <h2 className="text-sm font-bold">Notes</h2>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                  {bill.notes}
                 </p>
-                <p className="flex items-center gap-2 truncate">
-                  <Phone className="h-3.5 w-3.5 shrink-0" />
-                  {item.support.phone}
-                </p>
+              </section>
+            ) : null}
+            <section>
+              <h2 className="text-sm font-bold">Original documents</h2>
+              <div className="mt-3 divide-y divide-border">
+                {documents.map((file) => (
+                  <div className="flex items-center gap-3 py-3" key={file.id}>
+                    <FileText className="h-5 w-5 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 break-words text-sm">
+                      {file.filename}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Download ${file.filename}`}
+                      title="Download original"
+                      onClick={() => void download(file.id)}
+                      className="grid h-10 w-10 shrink-0 place-items-center border border-border disabled:opacity-50"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                {!documents.length ? (
+                  <p className="text-sm text-muted-foreground">
+                    No original document attached.
+                  </p>
+                ) : null}
               </div>
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-2">
+            </section>
             <Link
               to="/agent"
-              className="inline-flex items-center justify-center gap-2 rounded-sm bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] active:translate-y-0.5 active:shadow-[0_2px_0_0_var(--color-foreground)]"
+              search={{ itemId: bill.id }}
+              className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-3 text-sm font-bold text-primary-foreground"
             >
-              <Bot className="h-4 w-4" />
-              Report an issue with this
+              <Pencil className="h-4 w-4" />
+              Draft a support request
             </Link>
-            <button className="inline-flex items-center justify-center gap-2 rounded-sm border border-foreground px-4 py-3 text-sm font-bold">
-              <Bell className="h-4 w-4" />
-              Change reminders
-            </button>
-          </section>
-        </aside>
+          </>
+        )}
       </div>
     </PhoneShell>
   );
