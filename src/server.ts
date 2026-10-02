@@ -60,7 +60,10 @@ export default {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      normalized.headers.set("Cache-Control", "private, no-store");
+      normalized.headers.set("X-Content-Type-Options", "nosniff");
+      return normalized;
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {

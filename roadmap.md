@@ -1,26 +1,31 @@
-# Roadmap
+# Warrantly Roadmap
 
-Scope (current): Clerk Google sign-in, Neon Postgres backend, and Nvidia Nemotron OCR. Document-file storage provider is still undecided.
+## Implemented
 
-## Done
-- [x] Mobile-first design system: Paper & Signal palette, Outfit + Figtree, square-ish utility styling
-- [x] Landing screen (/)
-- [x] Sign in / create account screen (/auth)
-- [x] Today dashboard (/home)
-- [x] Scan + review document screen (/scan)
-- [x] Assistant chat with draft-email card (/agent)
-- [x] Vault list with filters (/vault)
-- [x] Item detail with docs + escalation contacts (/item/$itemId)
-- [x] Clerk server middleware and sign-in component
-- [x] Protected app routes and session-derived owner identity
-- [x] Neon/Drizzle schema for users, items, documents, OCR data and reminders
-- [x] Initial owner-scoped item list/create server functions
+- [x] Existing mobile/desktop Warrantly design retained.
+- [x] Clerk-protected routes with server-derived account identity.
+- [x] Real Neon-backed Today, Vault, bill details and support drafts; demo data removed.
+- [x] Private original-image/PDF upload, content validation and expiring downloads.
+- [x] Camera permission handling, capture and stream cleanup.
+- [x] Multi-page PDF rasterization and server-only NVIDIA OCR integration.
+- [x] Editable review: bill name, retailer, invoice, serial/IMEI, model, barcode, amount, currency, purchase date, warranty/return dates, notes and reminder offsets.
+- [x] Raw OCR text, confidence, saved drafts, partial-page recovery and bounded retries.
+- [x] Idempotent save, edit, delete, account isolation and composite tenant foreign keys.
+- [x] Real statistics, category/status/search filters and in-app deadline reminders.
+- [x] Atomic per-account upload quota, migration recovery and test suites.
 
-## Not started
-- Configure Clerk keys and enable Google only in the Clerk Dashboard
-- Run generated migrations against the Neon development database
-- Replace remaining demo screens with Neon-backed records
-- Choose private document object storage and implement upload/download access
-- Nvidia Nemotron OCR extraction, review and persistence workflow
-- Reminder delivery, AI replies and email sending
-- Account deletion webhook, audit logging, rate limits and production monitoring
+## Next validation
+
+1. Add the NVIDIA OCR key locally and to the correct Vercel environment; restart/redeploy.
+2. Test photos and multi-page PDFs from representative real bills. Review missing fields and extraction accuracy; never silently fill gaps.
+3. Run an authenticated two-account smoke test against the deployed environment, including upload, review, save, reload, signed download, edit and delete.
+4. Verify camera capture in mobile Safari on HTTPS and confirm storage CORS for all deployed origins.
+
+## Before public launch
+
+- Production Clerk/Google configuration and rotation of previously shared secrets.
+- Monitoring, backup/restore drills, storage lifecycle rules and orphan-object cleanup.
+- Account export/deletion, verified Clerk deletion webhook and document-processing consent/privacy policy.
+- Durable OCR job processing and project-wide quotas, then database pagination for large vaults.
+- Production OCR capacity and latency testing; do not depend on an evaluation endpoint's availability.
+- Optional reminder email/push worker and verified support-contact lookup. Neither is currently represented as working.

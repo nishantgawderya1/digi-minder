@@ -47,12 +47,12 @@ function AuthScreen() {
               Your document vault starts with Google.
             </h1>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground lg:text-base">
-              Clerk will handle Google sign-in, account recovery, device changes
-              and future sharing rules for this personal paperwork vault.
+              Keep your original bills, purchase details and warranty dates
+              together in your private account.
             </p>
             <ul className="mt-8 hidden space-y-3 lg:block">
               {[
-                "Encrypted file storage for invoices, cards and service letters.",
+                "Private file storage for invoices, cards and service letters.",
                 "Extracted purchase dates, serial numbers and warranty deadlines.",
                 "Assistant access controlled by the same account identity.",
               ].map((item) => (
@@ -93,11 +93,6 @@ function AuthScreen() {
                 environment to enable sign-in.
               </p>
             )}
-
-            <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-              Enable Google as the only sign-in method in the Clerk Dashboard.
-              The sign-in options shown here follow that provider configuration.
-            </p>
           </div>
         </main>
       </div>

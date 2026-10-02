@@ -8,7 +8,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Snap a bill, get the warranty read for you, and let the assistant chase support when something breaks.",
+          "Capture a bill, review its details, and keep your purchase documents and warranty dates together.",
       },
       {
         property: "og:title",
@@ -17,7 +17,7 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Snap, store, and escalate. Your warranty paperwork finally works for you.",
+          "Bills, original documents and warranty dates in your private vault.",
       },
     ],
   }),
@@ -37,13 +37,13 @@ const steps = [
   },
   {
     icon: Bell,
-    title: "We nudge you",
-    body: "A reminder lands before cover ends, so nothing slips past the deadline.",
+    title: "Track the dates",
+    body: "See upcoming warranty and return deadlines in your dashboard.",
   },
   {
     icon: Bot,
-    title: "We complain for you",
-    body: "Describe the fault. The assistant writes the complaint and finds who to send it to.",
+    title: "Prepare a request",
+    body: "Create a support draft with your saved purchase details and the issue you describe.",
   },
 ];
 
@@ -69,12 +69,11 @@ function Landing() {
               Built for your pocket
             </p>
             <h1 className="mt-4 max-w-3xl text-[34px] font-extrabold leading-[1.05] lg:text-6xl">
-              Your bills and warranties, finally on your side.
+              Warrantly
             </h1>
             <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted-foreground lg:text-lg">
-              Washing machine died in month four of a six-month warranty?
-              Warrantly already knows the dates, the invoice and who to shout
-              at.
+              Your bills, original documents and warranty dates, together in one
+              private vault.
             </p>
           </div>
           <div className="flex flex-col gap-2">
@@ -89,7 +88,7 @@ function Landing() {
               to="/home"
               className="inline-flex items-center justify-center rounded-sm border border-foreground px-4 py-3 text-sm font-bold"
             >
-              Look around first
+              Open your vault
             </Link>
           </div>
         </section>
@@ -97,9 +96,9 @@ function Landing() {
         <section className="border-b border-border">
           <div className="grid grid-cols-3 divide-x divide-border text-center">
             {[
-              ["4", "items held"],
-              ["₹3.2L", "value covered"],
-              ["54d", "next deadline"],
+              ["Camera", "Capture a bill"],
+              ["Images", "JPEG, PNG, WebP"],
+              ["PDF", "Purchase documents"],
             ].map(([big, small]) => (
               <div key={small} className="px-2 py-5">
                 <p className="font-display text-xl font-extrabold">{big}</p>
@@ -141,8 +140,7 @@ function Landing() {
             One tap away
           </p>
           <p className="mt-2 text-lg font-bold leading-snug">
-            “Fridge is leaking.” That sentence is enough — we handle the
-            paperwork.
+            Keep the paperwork ready when you need support.
           </p>
           <Link
             to="/agent"
@@ -154,7 +152,7 @@ function Landing() {
         </section>
 
         <footer className="mt-10 px-5 text-center text-xs text-muted-foreground">
-          Warrantly · demo screens · no documents are stored yet
+          Warrantly · Your personal document vault
         </footer>
       </div>
     </div>
