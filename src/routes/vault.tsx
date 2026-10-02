@@ -1,120 +1,175 @@
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { FileText, Search } from "lucide-react";
-import { useState } from "react";
-import { PhoneShell, ScreenHeader, StatusChip } from "@/components/phone-shell";
-import { items, statusLabel, type ItemStatus } from "@/lib/demo-data";
+import { ArrowRight, FileClock, Plus, Search } from "lucide-react";
+import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
+import { BillCard } from "@/components/bill-card";
 import { requireCurrentUser } from "@/lib/route-auth";
+import { loadVault, unwrap } from "@/lib/bill-functions";
+import { categories, warrantyState } from "@/lib/bills";
 
 export const Route = createFileRoute("/vault")({
   beforeLoad: () => requireCurrentUser(),
-  head: () => ({
-    meta: [
-      { title: "Vault — Warrantly" },
-      {
-        name: "description",
-        content:
-          "Every item you own, with its bill, warranty card and cover status.",
-      },
-      { property: "og:title", content: "Vault — Warrantly" },
-      {
-        property: "og:description",
-        content:
-          "Every item you own, with its bill, warranty card and cover status.",
-      },
-    ],
-  }),
+  loader: async () => unwrap(await loadVault()),
   component: VaultScreen,
 });
-
-const filters = ["All", "In cover", "Ending soon", "Cover ended"] as const;
-
 function VaultScreen() {
-  const [filter, setFilter] = useState<(typeof filters)[number]>("All");
-
-  const shown = items.filter((i) =>
-    filter === "All" ? true : statusLabel[i.status as ItemStatus] === filter,
+  const { bills, drafts } = Route.useLoaderData();
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [status, setStatus] = useState("");
+  const filtered = useMemo(
+    () =>
+      bills.filter((bill) => {
+        const matches = [
+          bill.name,
+          bill.retailer,
+          bill.brand,
+          bill.category,
+          bill.serialNumber,
+          bill.barcode,
+          bill.invoiceNumber,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(query.trim().toLowerCase());
+        return (
+          matches &&
+          (!category || bill.category === category) &&
+          (!status || warrantyState(bill).status === status)
+        );
+      }),
+    [bills, query, category, status],
   );
-
+  const control =
+    "h-11 min-w-0 rounded-sm border border-input bg-card px-3 text-sm focus:border-primary focus:outline-none";
   return (
     <PhoneShell>
-      <ScreenHeader eyebrow="4 items · ₹3.2L covered" title="Your vault" />
-
-      <div className="px-5 pt-4 lg:px-8">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-sm border border-input bg-card px-3 py-2.5">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <input
-            placeholder="Search item, brand or shop"
-            className="min-w-0 bg-transparent text-sm outline-none"
-          />
-        </div>
-
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
-          {filters.map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`shrink-0 rounded-sm px-3 py-1.5 text-xs font-bold uppercase tracking-wider ${
-                filter === f
-                  ? "bg-foreground text-background"
-                  : "border border-border text-muted-foreground"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <ul className="mt-4 grid gap-2 px-5 lg:grid-cols-3 lg:px-8">
-        {shown.map((item) => (
-          <li key={item.id}>
-            <Link
-              to="/item/$itemId"
-              params={{ itemId: item.id }}
-              className="block h-full rounded-sm border border-border bg-card p-4 active:bg-secondary"
-            >
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold">{item.name}</p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {item.brand} · {item.category} · {item.price}
-                  </p>
-                </div>
-                <StatusChip tone={item.status}>
-                  {statusLabel[item.status]}
-                </StatusChip>
-              </div>
-
-              <div className="mt-3 h-1.5 w-full rounded-sm bg-secondary">
-                <div
-                  className={`h-1.5 rounded-sm ${
-                    item.status === "ending" ? "bg-accent" : "bg-primary"
-                  }`}
-                  style={{
-                    width: `${Math.round((item.monthsLeft / item.warrantyMonths) * 100)}%`,
-                  }}
-                />
-              </div>
-              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-3 text-xs text-muted-foreground">
-                <span className="truncate">
-                  {item.status === "expired"
-                    ? "Cover ended"
-                    : `${item.monthsLeft} of ${item.warrantyMonths} months left`}
-                </span>
-                <span className="flex shrink-0 items-center gap-1">
-                  <FileText className="h-3 w-3" />
-                  {item.docs.length} docs
-                </span>
-              </div>
-            </Link>
-          </li>
-        ))}
-        {shown.length === 0 ? (
-          <li className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground lg:col-span-3">
-            Nothing here yet.
-          </li>
+      <ScreenHeader
+        eyebrow="Your records"
+        title="The vault"
+        right={
+          <Link
+            to="/scan"
+            title="Add a bill"
+            aria-label="Add a bill"
+            className="grid h-10 w-10 place-items-center rounded-sm bg-primary text-primary-foreground"
+          >
+            <Plus className="h-5 w-5" />
+          </Link>
+        }
+      />
+      <div className="space-y-7 p-5 lg:p-8">
+        {drafts.length ? (
+          <section>
+            <h2 className="mb-3 text-sm font-bold">
+              Needs review ({drafts.length})
+            </h2>
+            <div className="divide-y divide-border border-y border-border">
+              {drafts.map((draft) => (
+                <Link
+                  to="/review/$documentId"
+                  params={{ documentId: draft.id }}
+                  key={draft.id}
+                  className="flex items-center gap-3 py-3"
+                >
+                  <FileClock className="h-5 w-5 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-semibold">
+                      {draft.filename}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {draft.status === "pending"
+                        ? "Upload incomplete"
+                        : draft.status === "failed"
+                          ? "Reading incomplete"
+                          : "Review details"}
+                    </p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0" />
+                </Link>
+              ))}
+            </div>
+          </section>
         ) : null}
-      </ul>
+        <section>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <label className="relative min-w-0 sm:col-span-2 xl:col-span-1">
+              <span className="sr-only">Search bills</span>
+              <Search className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search bills"
+                className={`${control} w-full pl-9`}
+              />
+            </label>
+            <select
+              aria-label="Category filter"
+              className={control}
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+            >
+              <option value="">All categories</option>
+              {categories.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Warranty filter"
+              className={control}
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="">All warranties</option>
+              <option value="active">Active</option>
+              <option value="ending">Ending in 30 days</option>
+              <option value="expired">Expired</option>
+              <option value="unknown">No cover date</option>
+            </select>
+          </div>
+          <p className="my-4 text-xs text-muted-foreground">
+            {filtered.length} of {bills.length} saved bills
+          </p>
+          {filtered.length ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {filtered.map((bill) => (
+                <BillCard key={bill.id} bill={bill} />
+              ))}
+            </div>
+          ) : (
+            <div className="border-y border-border py-12 text-center">
+              <p className="text-sm text-muted-foreground">
+                {bills.length
+                  ? "No bills match these filters."
+                  : "No saved bills yet."}
+              </p>
+              {bills.length ? (
+                <button
+                  type="button"
+                  className="mt-4 text-sm font-bold text-primary"
+                  onClick={() => {
+                    setQuery("");
+                    setCategory("");
+                    setStatus("");
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : (
+                <Link
+                  to="/scan"
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-primary"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add a bill
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
     </PhoneShell>
   );
 }

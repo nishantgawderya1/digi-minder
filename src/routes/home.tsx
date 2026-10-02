@@ -1,168 +1,171 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowUpRight, Bot, Clock, FileText, ScanLine } from "lucide-react";
-import { PhoneShell, ScreenHeader, StatusChip } from "@/components/phone-shell";
-import { items, statusLabel, timeline } from "@/lib/demo-data";
+import { UserButton, useUser } from "@clerk/tanstack-react-start";
+import { ArrowRight, Bell, CalendarDays, Plus } from "lucide-react";
+import { format } from "date-fns";
+import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
+import { BillCard } from "@/components/bill-card";
 import { requireCurrentUser } from "@/lib/route-auth";
+import { loadVault, unwrap } from "@/lib/bill-functions";
+import { displayDate, totalsByCurrency, warrantyState } from "@/lib/bills";
 
 export const Route = createFileRoute("/home")({
   beforeLoad: () => requireCurrentUser(),
-  head: () => ({
-    meta: [
-      { title: "Today — Warrantly" },
-      {
-        name: "description",
-        content: "What needs attention today across your bills and warranties.",
-      },
-      { property: "og:title", content: "Today — Warrantly" },
-      {
-        property: "og:description",
-        content: "What needs attention today across your bills and warranties.",
-      },
-    ],
-  }),
-  component: Dashboard,
+  loader: async () => unwrap(await loadVault()),
+  component: HomeScreen,
 });
 
-function Dashboard() {
-  const urgent = items.find((i) => i.status === "ending")!;
-
+function HomeScreen() {
+  const { bills, drafts, dueReminders } = Route.useLoaderData();
+  const { user } = useUser();
+  const today = format(new Date(), "yyyy-MM-dd");
+  const active = bills.filter((bill) =>
+    ["active", "ending"].includes(warrantyState(bill).status),
+  );
+  const expiring = bills.filter(
+    (bill) => warrantyState(bill).status === "ending",
+  );
+  const deadlines = bills
+    .flatMap((bill) => [
+      { bill, type: "Warranty", date: bill.warrantyExpiresAt },
+      { bill, type: "Return", date: bill.returnExpiresAt },
+    ])
+    .filter((entry) => entry.date && entry.date >= today)
+    .sort((a, b) => a.date!.localeCompare(b.date!))
+    .slice(0, 6);
+  const totals = totalsByCurrency(bills);
   return (
     <PhoneShell>
       <ScreenHeader
-        eyebrow="Thursday, 1 October"
-        title="Good afternoon, Nishant"
+        eyebrow={format(new Date(), "EEEE, d MMMM")}
+        title={
+          user?.firstName ? `Hello, ${user.firstName}` : "Your day, covered"
+        }
         right={
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-foreground font-display text-sm font-extrabold text-background">
-            NG
-          </span>
+          <div className="lg:hidden">
+            <UserButton />
+          </div>
         }
       />
-
-      <div className="grid gap-6 px-5 pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:px-8">
-        <section>
-          <div className="rounded-sm border border-foreground bg-accent/20 p-4 lg:p-6">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                  Needs you first
-                </p>
-                <h2 className="mt-1 text-lg font-bold leading-snug lg:text-2xl">
-                  {urgent.name}
-                </h2>
-              </div>
-              <StatusChip tone="ending">{urgent.monthsLeft} mo left</StatusChip>
+      <div className="space-y-8 p-5 lg:p-8">
+        <section
+          className="grid grid-cols-2 gap-x-5 gap-y-6 border-b border-border pb-6 xl:grid-cols-4"
+          aria-label="Vault totals"
+        >
+          {[
+            ["Bills saved", String(bills.length)],
+            ["Recorded value", totals.join(" / ") || "Not recorded"],
+            ["Active warranties", String(active.length)],
+            ["Ending in 30 days", String(expiring.length)],
+          ].map(([label, value]) => (
+            <div className="min-w-0" key={label}>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mt-2 break-words text-xl font-extrabold">{value}</p>
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Cover ends 12 Oct 2026. If anything is wrong, raise it now while
-              repairs are still free.
-            </p>
-            <div className="mt-4 flex gap-2">
-              <Link
-                to="/agent"
-                className="flex-1 rounded-sm bg-foreground px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-background"
-              >
-                Report an issue
-              </Link>
-              <Link
-                to="/vault"
-                className="rounded-sm border border-foreground px-3 py-2.5 text-xs font-bold uppercase tracking-wider"
-              >
-                Details
-              </Link>
-            </div>
-          </div>
+          ))}
         </section>
-
-        <section>
-          <div className="grid grid-cols-2 gap-2">
-            <Link
-              to="/scan"
-              className="rounded-sm border border-border bg-card p-4 active:bg-secondary"
-            >
-              <ScanLine className="h-5 w-5 text-primary" strokeWidth={2.2} />
-              <p className="mt-3 text-sm font-bold">Scan a bill</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Read in seconds
-              </p>
-            </Link>
-            <Link
-              to="/agent"
-              className="rounded-sm border border-border bg-card p-4 active:bg-secondary"
-            >
-              <Bot className="h-5 w-5 text-primary" strokeWidth={2.2} />
-              <p className="mt-3 text-sm font-bold">Ask assistant</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Drafts complaints
-              </p>
-            </Link>
-          </div>
-        </section>
-      </div>
-
-      <div className="grid gap-7 px-5 pt-7 lg:grid-cols-[360px_minmax(0,1fr)] lg:items-start lg:px-8">
-        <section>
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            Coming up
-          </h2>
-          <ol className="mt-3 space-y-0 border-l border-border pl-4">
-            {timeline.map((t) => (
-              <li key={t.title} className="relative pb-5">
-                <span
-                  className={`absolute -left-[22px] top-1 h-3 w-3 rounded-full border-2 border-background ${
-                    t.tone === "warn"
-                      ? "bg-accent"
-                      : t.tone === "calm"
-                        ? "bg-primary"
-                        : "bg-muted-foreground"
-                  }`}
-                />
-                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  {t.when}
-                </p>
-                <p className="mt-1 text-sm font-bold">{t.title}</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {t.detail}
-                </p>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <section className="lg:pt-0">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-            <h2 className="min-w-0 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Recently added
+        {drafts.length ? (
+          <Link
+            to="/vault"
+            className="flex items-center justify-between gap-3 border-l-4 border-accent bg-secondary px-4 py-3 text-sm font-semibold"
+          >
+            {drafts.length} {drafts.length === 1 ? "bill needs" : "bills need"}{" "}
+            review
+            <ArrowRight className="h-4 w-4 shrink-0" />
+          </Link>
+        ) : null}
+        {dueReminders.length ? (
+          <section>
+            <h2 className="mb-3 flex items-center gap-2 text-lg font-bold">
+              <Bell className="h-5 w-5 text-primary" />
+              Reminders
             </h2>
-            <Link
-              to="/vault"
-              className="flex shrink-0 items-center gap-1 text-xs font-bold text-primary"
-            >
-              See all <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          <ul className="mt-3 grid gap-2 border-y border-border py-2 lg:grid-cols-2 lg:border-y-0 lg:py-0">
-            {items.slice(0, 3).map((item) => (
-              <li key={item.id}>
+            <div className="divide-y divide-border border-y border-border">
+              {dueReminders.map((reminder) => (
                 <Link
                   to="/item/$itemId"
-                  params={{ itemId: item.id }}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border-border py-3.5 active:bg-secondary lg:border lg:bg-card lg:px-3.5"
+                  params={{ itemId: reminder.itemId }}
+                  key={`${reminder.itemId}-${reminder.deadlineType}`}
+                  className="flex items-center justify-between gap-3 py-3"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">{item.name}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                      <FileText className="h-3 w-3 shrink-0" />
-                      {item.brand} · {item.purchased} · {item.price}
+                    <p className="break-words text-sm font-bold">
+                      {reminder.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {reminder.deadlineType === "warranty"
+                        ? "Warranty ending soon"
+                        : "Return deadline approaching"}
                     </p>
                   </div>
-                  <StatusChip tone={item.status}>
-                    {statusLabel[item.status]}
-                  </StatusChip>
+                  <ArrowRight className="h-4 w-4 shrink-0" />
                 </Link>
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        <section>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold">Upcoming deadlines</h2>
+            <CalendarDays className="h-5 w-5 text-primary" />
+          </div>
+          {deadlines.length ? (
+            <div className="divide-y divide-border border-y border-border">
+              {deadlines.map(({ bill, type, date }) => (
+                <Link
+                  key={`${bill.id}-${type}`}
+                  to="/item/$itemId"
+                  params={{ itemId: bill.id }}
+                  className="flex flex-wrap items-center justify-between gap-3 py-4"
+                >
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-bold">{bill.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {type} deadline
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold text-primary">
+                    {displayDate(date)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="border-y border-border py-6 text-sm text-muted-foreground">
+              No upcoming deadlines recorded.
+            </p>
+          )}
+        </section>
+        <section>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold">Recent bills</h2>
+            <Link
+              to="/vault"
+              className="inline-flex items-center gap-1 text-xs font-bold text-primary"
+            >
+              View vault
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          {bills.length ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {bills.slice(0, 4).map((bill) => (
+                <BillCard key={bill.id} bill={bill} />
+              ))}
+            </div>
+          ) : (
+            <div className="py-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Your vault is empty.
+              </p>
+              <Link
+                to="/scan"
+                className="mt-4 inline-flex items-center gap-2 rounded-sm bg-primary px-5 py-3 text-sm font-bold text-primary-foreground"
+              >
+                <Plus className="h-4 w-4" />
+                Add your first bill
+              </Link>
+            </div>
+          )}
         </section>
       </div>
     </PhoneShell>
