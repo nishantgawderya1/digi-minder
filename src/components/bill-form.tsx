@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, LoaderCircle, Save } from "lucide-react";
 import {
   saveBillSchema,
@@ -6,6 +6,7 @@ import {
   deadlineFromDuration,
   type BillFields,
 } from "@/lib/bills";
+import type { DraftPatch, FieldEvidence } from "@/lib/review";
 
 export function BillForm({
   initial,
@@ -13,54 +14,138 @@ export function BillForm({
   saving,
   error,
   disabled = false,
+  onChange,
+  evidence = {},
+  draftPatch = {},
 }: {
   initial: BillFields;
   onSave: (fields: BillFields) => void;
   saving: boolean;
   error: string | null;
   disabled?: boolean;
+  onChange?: (patch: DraftPatch) => void;
+  evidence?: FieldEvidence;
+  draftPatch?: DraftPatch;
 }) {
   const [fields, setFields] = useState(initial);
   const [validation, setValidation] = useState<string | null>(null);
-  const update = <K extends keyof BillFields>(key: K, value: BillFields[K]) =>
-    setFields((current) => {
-      const next = { ...current, [key]: value };
-      if (key === "purchaseDate" || key === "warrantyMonths") {
-        const oldCalculated = deadlineFromDuration(
-          current.purchaseDate,
-          current.warrantyMonths,
+  const edited = useRef(new Set(Object.keys(draftPatch)));
+  useEffect(
+    () =>
+      setFields(
+        (current) =>
+          Object.fromEntries(
+            Object.entries(initial).map(([key, value]) => [
+              key,
+              edited.current.has(key)
+                ? current[key as keyof BillFields]
+                : value,
+            ]),
+          ) as BillFields,
+      ),
+    [initial],
+  );
+  const update = <K extends keyof BillFields>(key: K, value: BillFields[K]) => {
+    const current = fields;
+    const next = { ...current, [key]: value };
+    if (key === "purchaseDate" || key === "warrantyMonths") {
+      const oldCalculated = deadlineFromDuration(
+        current.purchaseDate,
+        current.warrantyMonths,
+        "months",
+      );
+      if (
+        key === "warrantyMonths" ||
+        !current.warrantyExpiresAt ||
+        current.warrantyExpiresAt === oldCalculated
+      )
+        next.warrantyExpiresAt = deadlineFromDuration(
+          next.purchaseDate,
+          next.warrantyMonths,
           "months",
         );
-        if (
-          key === "warrantyMonths" ||
-          !current.warrantyExpiresAt ||
-          current.warrantyExpiresAt === oldCalculated
-        )
-          next.warrantyExpiresAt = deadlineFromDuration(
-            next.purchaseDate,
-            next.warrantyMonths,
-            "months",
-          );
-      }
-      if (key === "purchaseDate" || key === "returnWindowDays") {
-        const oldCalculated = deadlineFromDuration(
-          current.purchaseDate,
-          current.returnWindowDays,
+    }
+    if (key === "purchaseDate" || key === "returnWindowDays") {
+      const oldCalculated = deadlineFromDuration(
+        current.purchaseDate,
+        current.returnWindowDays,
+        "days",
+      );
+      if (
+        key === "returnWindowDays" ||
+        !current.returnExpiresAt ||
+        current.returnExpiresAt === oldCalculated
+      )
+        next.returnExpiresAt = deadlineFromDuration(
+          next.purchaseDate,
+          next.returnWindowDays,
           "days",
         );
-        if (
-          key === "returnWindowDays" ||
-          !current.returnExpiresAt ||
-          current.returnExpiresAt === oldCalculated
-        )
-          next.returnExpiresAt = deadlineFromDuration(
-            next.purchaseDate,
-            next.returnWindowDays,
+    }
+    const patch = Object.fromEntries(
+      Object.entries(next).filter(
+        ([field, value]) =>
+          JSON.stringify(value) !==
+          JSON.stringify(current[field as keyof BillFields]),
+      ),
+    ) as DraftPatch;
+    Object.keys(patch).forEach((field) => edited.current.add(field));
+    setFields(next);
+    onChange?.(patch);
+  };
+  const provenance = (key: keyof BillFields) => {
+    const source = evidence[key];
+    const calculated =
+      (key === "warrantyExpiresAt" &&
+        fields.warrantyExpiresAt &&
+        fields.warrantyMonths !== null &&
+        fields.warrantyExpiresAt ===
+          deadlineFromDuration(
+            fields.purchaseDate,
+            fields.warrantyMonths,
+            "months",
+          )) ||
+      (key === "returnExpiresAt" &&
+        fields.returnExpiresAt &&
+        fields.returnWindowDays !== null &&
+        fields.returnExpiresAt ===
+          deadlineFromDuration(
+            fields.purchaseDate,
+            fields.returnWindowDays,
             "days",
-          );
-      }
-      return next;
-    });
+          ));
+    if (calculated && (!source || edited.current.has(key)))
+      return (
+        <p className="mt-1 text-[11px] font-normal text-muted-foreground">
+          Calculated from purchase date and duration
+        </p>
+      );
+    if (edited.current.has(key))
+      return (
+        <p className="mt-1 text-[11px] font-normal text-muted-foreground">
+          Your correction
+        </p>
+      );
+    if (source)
+      return (
+        <details className="mt-1 text-[11px] font-normal text-muted-foreground">
+          <summary className="cursor-pointer">
+            From original
+            {source.page !== null ? ` · Page ${source.page + 1}` : ""}
+          </summary>
+          <p className="mt-1 whitespace-pre-wrap break-words border-l-2 border-primary pl-2">
+            {source.quote}
+          </p>
+        </details>
+      );
+    if (key === "currency")
+      return (
+        <p className="mt-1 text-[11px] font-normal text-muted-foreground">
+          Default currency
+        </p>
+      );
+    return null;
+  };
   const inputClass =
     "mt-1.5 block min-h-11 w-full min-w-0 rounded-sm border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary";
   const textField = (
@@ -75,12 +160,8 @@ export function BillForm({
     label: string,
     max = 160,
   ) => (
-    <label
-      className="block min-w-0 text-xs font-semibold"
-      key={key}
-      htmlFor={`bill-${key}`}
-    >
-      {label}
+    <div className="min-w-0 text-xs font-semibold" key={key}>
+      <label htmlFor={`bill-${key}`}>{label}</label>
       <input
         id={`bill-${key}`}
         name={key}
@@ -95,17 +176,15 @@ export function BillForm({
         required={key === "name"}
         className={inputClass}
       />
-    </label>
+      {provenance(key)}
+    </div>
   );
   const dateField = (
     key: "purchaseDate" | "warrantyExpiresAt" | "returnExpiresAt",
     label: string,
   ) => (
-    <label
-      className="block min-w-0 text-xs font-semibold"
-      htmlFor={`bill-${key}`}
-    >
-      {label}
+    <div className="min-w-0 text-xs font-semibold">
+      <label htmlFor={`bill-${key}`}>{label}</label>
       <input
         id={`bill-${key}`}
         type="date"
@@ -118,7 +197,8 @@ export function BillForm({
         }
         className={inputClass}
       />
-    </label>
+      {provenance(key)}
+    </div>
   );
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -144,11 +224,8 @@ export function BillForm({
           {textField("retailer", "Store / retailer")}
           {textField("brand", "Brand", 120)}
           {textField("invoiceNumber", "Invoice / receipt number")}
-          <label
-            className="block min-w-0 text-xs font-semibold"
-            htmlFor="bill-category"
-          >
-            Category
+          <div className="min-w-0 text-xs font-semibold">
+            <label htmlFor="bill-category">Category</label>
             <select
               id="bill-category"
               value={fields.category ?? ""}
@@ -167,7 +244,8 @@ export function BillForm({
                 <option key={category}>{category}</option>
               ))}
             </select>
-          </label>
+            {provenance("category")}
+          </div>
         </div>
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           {textField("serialNumber", "Serial number / IMEI")}
@@ -176,11 +254,8 @@ export function BillForm({
           {dateField("purchaseDate", "Purchase date")}
         </div>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_100px] gap-4">
-          <label
-            htmlFor="bill-price"
-            className="block min-w-0 text-xs font-semibold"
-          >
-            Amount paid
+          <div className="min-w-0 text-xs font-semibold">
+            <label htmlFor="bill-price">Amount paid</label>
             <input
               id="bill-price"
               type="number"
@@ -194,12 +269,10 @@ export function BillForm({
               }
               className={inputClass}
             />
-          </label>
-          <label
-            htmlFor="bill-currency"
-            className="block min-w-0 text-xs font-semibold"
-          >
-            Currency
+            {provenance("purchasePrice")}
+          </div>
+          <div className="min-w-0 text-xs font-semibold">
+            <label htmlFor="bill-currency">Currency</label>
             <input
               id="bill-currency"
               value={fields.currency}
@@ -211,16 +284,14 @@ export function BillForm({
               required
               className={inputClass}
             />
-          </label>
+            {provenance("currency")}
+          </div>
         </div>
         <div className="border-t border-border pt-5">
           <h3 className="mb-4 text-sm font-bold">Warranty & returns</h3>
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <label
-              htmlFor="bill-warranty-months"
-              className="block min-w-0 text-xs font-semibold"
-            >
-              Warranty (months)
+            <div className="min-w-0 text-xs font-semibold">
+              <label htmlFor="bill-warranty-months">Warranty (months)</label>
               <input
                 id="bill-warranty-months"
                 type="number"
@@ -236,13 +307,11 @@ export function BillForm({
                 }
                 className={inputClass}
               />
-            </label>
+              {provenance("warrantyMonths")}
+            </div>
             {dateField("warrantyExpiresAt", "Warranty ends")}
-            <label
-              htmlFor="bill-return-days"
-              className="block min-w-0 text-xs font-semibold"
-            >
-              Return window (days)
+            <div className="min-w-0 text-xs font-semibold">
+              <label htmlFor="bill-return-days">Return window (days)</label>
               <input
                 id="bill-return-days"
                 type="number"
@@ -258,7 +327,8 @@ export function BillForm({
                 }
                 className={inputClass}
               />
-            </label>
+              {provenance("returnWindowDays")}
+            </div>
             {dateField("returnExpiresAt", "Return deadline")}
           </div>
         </div>

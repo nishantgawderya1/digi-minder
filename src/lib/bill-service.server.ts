@@ -8,9 +8,11 @@ import {
   documentPages,
   items,
   reminders,
+  documentJobs,
 } from "@/db/schema";
 import { getAuthenticatedUserId } from "./auth.server";
-import { billFieldsSchema, reminderSchedule, saveBillSchema } from "./bills";
+import { billFieldsSchema, saveBillSchema } from "./bills";
+import { scheduleInTimezone } from "./notifications";
 import { extractBillFields } from "./ocr";
 import { runOcr } from "./ocr.server";
 import {
@@ -27,6 +29,8 @@ import {
   uploadKey,
 } from "./storage.server";
 import { serviceResult, ServiceError } from "./service-error.server";
+import { autosaveSchema, draftPatchSchema, evidenceWithPages } from "./review";
+import { backgroundConfigured } from "./inngest.server";
 
 async function ownedDocument(userId: string, id: string) {
   const [document] = await getDatabase()
@@ -64,6 +68,7 @@ export async function loadVault() {
       db
         .selectDistinctOn([reminders.itemId, reminders.deadlineType], {
           itemId: reminders.itemId,
+          id: reminders.id,
           deadlineType: reminders.deadlineType,
           name: items.name,
         })
@@ -80,8 +85,8 @@ export async function loadVault() {
             eq(reminders.userId, userId),
             eq(reminders.channel, "in_app"),
             eq(reminders.status, "scheduled"),
-            lte(reminders.remindAt, new Date()),
-            sql`CASE WHEN ${reminders.deadlineType} = 'warranty' THEN ${items.warrantyExpiresAt} ELSE ${items.returnExpiresAt} END >= CURRENT_DATE`,
+            sql`coalesce(${reminders.snoozedUntil}, ${reminders.remindAt}) <= now()`,
+            sql`CASE WHEN ${reminders.deadlineType} = 'warranty' THEN ${items.warrantyExpiresAt} ELSE ${items.returnExpiresAt} END >= (now() AT TIME ZONE (SELECT timezone FROM app_users WHERE id = ${userId}))::date`,
           ),
         )
         .orderBy(
@@ -129,6 +134,13 @@ export async function loadReview(id: string) {
     const fields = billFieldsSchema.safeParse(
       document.extractedData?.["fields"],
     );
+    const draft = draftPatchSchema.safeParse(document.draftFields);
+    const [job] = await getDatabase()
+      .select()
+      .from(documentJobs)
+      .where(
+        and(eq(documentJobs.userId, userId), eq(documentJobs.documentId, id)),
+      );
     return {
       id,
       itemId: document.itemId,
@@ -149,14 +161,31 @@ export async function loadReview(id: string) {
         )?.method ?? null,
       pageCount: document.pageCount,
       pages,
+      job: job
+        ? {
+            status: job.status,
+            completedPages: job.completedPages,
+            error: job.error,
+          }
+        : null,
+      backgroundAvailable: backgroundConfigured(),
+      revision: document.draftRevision,
+      draftPatch: draft.success ? draft.data : {},
+      evidence: evidenceWithPages(document.extractedData?.["evidence"], pages),
       fields: fields.success
-        ? fields.data
-        : extractBillFields(
-            pages
-              .filter((page) => page.status === "complete")
-              .map((page) => page.text ?? "")
-              .join("\n\n"),
-          ),
+        ? billFieldsSchema.parse({
+            ...fields.data,
+            ...(draft.success ? draft.data : {}),
+          })
+        : billFieldsSchema.parse({
+            ...extractBillFields(
+              pages
+                .filter((page) => page.status === "complete")
+                .map((page) => page.text ?? "")
+                .join("\n\n"),
+            ),
+            ...(draft.success ? draft.data : {}),
+          }),
       previewUrl:
         document.storageKey && document.ocrStatus !== "pending"
           ? await signedDownload(document.storageKey, document.originalFilename)
@@ -222,7 +251,11 @@ export async function completeUpload(id: string) {
   const userId = await getAuthenticatedUserId();
   return serviceResult(async () => {
     const document = await ownedDocument(userId, id);
-    if (document.ocrStatus !== "pending") return { id };
+    if (document.ocrStatus !== "pending") {
+      if (!document.itemId)
+        await (await import("./processing.server")).ensureQueued(id, userId);
+      return { id };
+    }
     if (!document.storageKey) throw new ServiceError("Upload not found.");
     const finalKey = `users/${encodeURIComponent(userId)}/documents/${id}`;
     await finalizeUpload(
@@ -231,24 +264,33 @@ export async function completeUpload(id: string) {
       document.contentType,
       Number(document.byteSize),
     );
-    await getDatabase()
-      .update(documents)
-      .set({
-        storageKey: finalKey,
-        ocrStatus: "processing",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(documents.userId, userId),
-          eq(documents.id, id),
-          eq(documents.ocrStatus, "pending"),
+    await getDatabase().batch([
+      getDatabase()
+        .update(documents)
+        .set({
+          storageKey: finalKey,
+          ocrStatus: "processing",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(documents.userId, userId),
+            eq(documents.id, id),
+            eq(documents.ocrStatus, "pending"),
+          ),
         ),
-      );
+      getDatabase()
+        .insert(documentJobs)
+        .values({ documentId: id, userId })
+        .onConflictDoNothing(),
+    ]);
     // Retryable cleanup: removing a missing S3 key is idempotent.
     await deleteStoredFile(document.storageKey).catch(() =>
       console.warn("Pending document cleanup deferred."),
     );
+    await (
+      await import("./processing.server")
+    ).ensureQueued(document.id, userId);
     return { id };
   });
 }
@@ -258,6 +300,12 @@ export async function readDocumentPage(data: {
   imageDataUrl: string;
 }) {
   const userId = await getAuthenticatedUserId();
+  return readDocumentPageForOwner(userId, data);
+}
+export async function readDocumentPageForOwner(
+  userId: string,
+  data: { id: string; pageIndex: number; imageDataUrl: string },
+) {
   return serviceResult(async () => {
     const db = getDatabase();
     const document = await ownedDocument(userId, data.id);
@@ -354,6 +402,18 @@ export async function acceptLocalPage(data: {
   source: "tesseract" | "pdf-text";
 }) {
   const userId = await getAuthenticatedUserId();
+  return acceptLocalPageForOwner(userId, data);
+}
+export async function acceptLocalPageForOwner(
+  userId: string,
+  data: {
+    id: string;
+    pageIndex: number;
+    text: string;
+    confidence: number | null;
+    source: "tesseract" | "pdf-text";
+  },
+) {
   return serviceResult(async () => {
     const db = getDatabase();
     const document = await ownedDocument(userId, data.id);
@@ -423,6 +483,9 @@ export async function acceptLocalPage(data: {
 
 export async function finishReading(id: string) {
   const userId = await getAuthenticatedUserId();
+  return finishReadingForOwner(userId, id);
+}
+export async function finishReadingForOwner(userId: string, id: string) {
   return serviceResult(async () => {
     const document = await ownedDocument(userId, id);
     if (document.itemId || document.ocrStatus === "pending")
@@ -495,20 +558,22 @@ export async function finishReading(id: string) {
       .set({
         ocrStatus: "review",
         ocrError: result.warning,
-        extractedData: {
-          ...claimed.extractedData,
-          fields: result.fields,
-          evidence: result.evidence,
-          extraction: {
-            ...(claimed.extractedData?.["extraction"] as Record<
-              string,
-              unknown
-            >),
-            status: "complete",
-            method: result.method,
-            model: result.model,
+        extractedData: sql`coalesce(${documents.extractedData}, '{}'::jsonb) || ${JSON.stringify(
+          {
+            ...claimed.extractedData,
+            fields: result.fields,
+            evidence: result.evidence,
+            extraction: {
+              ...(claimed.extractedData?.["extraction"] as Record<
+                string,
+                unknown
+              >),
+              status: "complete",
+              method: result.method,
+              model: result.model,
+            },
           },
-        },
+        )}::jsonb`,
         updatedAt: new Date(),
       })
       .where(
@@ -520,6 +585,45 @@ export async function finishReading(id: string) {
         ),
       );
     return { id };
+  });
+}
+export async function autosaveReview(input: z.infer<typeof autosaveSchema>) {
+  const userId = await getAuthenticatedUserId();
+  return serviceResult(async () => {
+    const data = autosaveSchema.parse(input);
+    const [saved] = await getDatabase()
+      .update(documents)
+      .set({
+        draftFields: sql`coalesce(${documents.draftFields}, '{}'::jsonb) || ${JSON.stringify(data.patch)}::jsonb`,
+        draftRevision: sql`${documents.draftRevision} + 1`,
+      })
+      .where(
+        and(
+          eq(documents.userId, userId),
+          eq(documents.id, data.id),
+          isNull(documents.itemId),
+          eq(documents.draftRevision, data.revision),
+          sql`${documents.ocrStatus} <> 'pending'`,
+        ),
+      )
+      .returning({ revision: documents.draftRevision });
+    if (!saved) {
+      const document = await ownedDocument(userId, data.id);
+      if (
+        !document.itemId &&
+        document.draftRevision === data.revision + 1 &&
+        Object.entries(data.patch).every(
+          ([field, value]) =>
+            JSON.stringify(document.draftFields?.[field]) ===
+            JSON.stringify(value),
+        )
+      )
+        return { revision: document.draftRevision };
+      throw new ServiceError(
+        "These details changed in another window. Refresh before editing again.",
+      );
+    }
+    return saved;
   });
 }
 export async function saveBill(data: z.infer<typeof saveBillSchema>) {
@@ -538,7 +642,12 @@ export async function saveBill(data: z.infer<typeof saveBillSchema>) {
         );
     }
     const [existing] = await db
-      .select({ id: items.id })
+      .select({
+        id: items.id,
+        warrantyExpiresAt: items.warrantyExpiresAt,
+        returnExpiresAt: items.returnExpiresAt,
+        reminderDays: items.reminderDays,
+      })
       .from(items)
       .where(and(eq(items.id, data.id), eq(items.userId, userId)));
     if (!data.documentId && !existing)
@@ -549,7 +658,18 @@ export async function saveBill(data: z.infer<typeof saveBillSchema>) {
       reminderDays: [...new Set(data.fields.reminderDays)],
       updatedAt: new Date(),
     };
-    const schedule = reminderSchedule(data.fields);
+    const [preferences] = await db
+      .select()
+      .from(appUsers)
+      .where(eq(appUsers.id, userId));
+    const schedule = scheduleInTimezone(data.fields, preferences!);
+    const rebuildSchedule =
+      !existing ||
+      existing.warrantyExpiresAt !== data.fields.warrantyExpiresAt ||
+      existing.returnExpiresAt !== data.fields.returnExpiresAt ||
+      JSON.stringify(
+        [...new Set(existing.reminderDays)].sort((a, b) => a - b),
+      ) !== JSON.stringify([...values.reminderDays].sort((a, b) => a - b));
     const [saved] = await db.batch([
       db
         .insert(items)
@@ -562,7 +682,12 @@ export async function saveBill(data: z.infer<typeof saveBillSchema>) {
         .returning({ id: items.id }),
       db
         .update(documents)
-        .set({ itemId: data.id, ocrStatus: "complete", updatedAt: new Date() })
+        .set({
+          itemId: data.id,
+          ocrStatus: "complete",
+          draftFields: null,
+          updatedAt: new Date(),
+        })
         .where(
           and(
             eq(documents.userId, userId),
@@ -570,15 +695,17 @@ export async function saveBill(data: z.infer<typeof saveBillSchema>) {
           ),
         ),
       db
-        .delete(reminders)
+        .update(reminders)
+        .set({ status: "cancelled" })
         .where(
           and(
             eq(reminders.userId, userId),
             eq(reminders.itemId, data.id),
             eq(reminders.status, "scheduled"),
+            sql`${rebuildSchedule}`,
           ),
         ),
-      ...(schedule.length
+      ...(schedule.length && rebuildSchedule
         ? [
             db
               .insert(reminders)
@@ -587,10 +714,19 @@ export async function saveBill(data: z.infer<typeof saveBillSchema>) {
                   ...reminder,
                   userId,
                   itemId: data.id,
-                  channel: "in_app",
                 })),
               )
-              .onConflictDoNothing(),
+              .onConflictDoUpdate({
+                target: [
+                  reminders.userId,
+                  reminders.itemId,
+                  reminders.deadlineType,
+                  reminders.remindAt,
+                  reminders.channel,
+                ],
+                set: { status: "scheduled", snoozedUntil: null },
+                setWhere: sql`${reminders.sentAt} IS NULL AND ${reminders.deliveryStartedAt} IS NULL`,
+              }),
           ]
         : []),
     ]);

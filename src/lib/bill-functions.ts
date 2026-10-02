@@ -6,6 +6,7 @@ import {
   MAX_PAGES,
   saveBillSchema,
 } from "./bills";
+import { autosaveSchema } from "./review";
 
 const idSchema = z.object({ id: z.string().uuid() });
 export const loadVault = createServerFn({ method: "GET" }).handler(async () =>
@@ -37,6 +38,16 @@ export const completeUpload = createServerFn({ method: "POST" })
   .validator(idSchema)
   .handler(async ({ data }) =>
     (await import("./bill-service.server")).completeUpload(data.id),
+  );
+export const queueReading = createServerFn({ method: "POST" })
+  .validator(idSchema)
+  .handler(async ({ data }) =>
+    (await import("./processing.server")).queueReading(data.id),
+  );
+export const autosaveReview = createServerFn({ method: "POST" })
+  .validator(autosaveSchema)
+  .handler(async ({ data }) =>
+    (await import("./bill-service.server")).autosaveReview(data),
   );
 export const readDocumentPage = createServerFn({ method: "POST" })
   .validator(

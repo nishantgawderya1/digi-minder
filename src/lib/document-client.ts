@@ -228,16 +228,5 @@ export async function uploadDocument(
         "The original hasn't finished uploading. Please retry from Add bill.",
     };
   }
-  try {
-    await readPreparedDocument(upload.id, prepared, onProgress);
-    return { id: upload.id, error: null };
-  } catch (error) {
-    return {
-      id: upload.id,
-      error:
-        error instanceof Error
-          ? error.message
-          : "The bill could not be read. You can complete the details manually.",
-    };
-  }
+  return { id: upload.id, error: null };
 }
