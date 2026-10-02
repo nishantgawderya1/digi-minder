@@ -1,5 +1,6 @@
 import {
   check,
+  boolean,
   date,
   foreignKey,
   index,
@@ -17,6 +18,9 @@ import { sql } from "drizzle-orm";
 export const appUsers = pgTable("app_users", {
   id: text("id").primaryKey(),
   email: text("email"),
+  emailReminders: boolean("email_reminders").default(false).notNull(),
+  timezone: text("timezone").default("UTC").notNull(),
+  reminderHour: integer("reminder_hour").default(9).notNull(),
   uploadCount: integer("upload_count").default(0).notNull(),
   assistantCount: integer("assistant_count").default(0).notNull(),
   assistantWindowStartedAt: timestamp("assistant_window_started_at", {
@@ -111,6 +115,8 @@ export const documents = pgTable(
     ocrStatus: text("ocr_status").default("pending").notNull(),
     pageCount: integer("page_count").default(1).notNull(),
     ocrError: text("ocr_error"),
+    draftFields: jsonb("draft_fields").$type<Record<string, unknown> | null>(),
+    draftRevision: integer("draft_revision").default(0).notNull(),
     extractedData: jsonb("extracted_data").$type<Record<
       string,
       unknown
@@ -191,6 +197,21 @@ export const reminders = pgTable(
     deadlineType: text("deadline_type").default("warranty").notNull(),
     status: text("status").default("scheduled").notNull(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+    deliveryStartedAt: timestamp("delivery_started_at", { withTimezone: true }),
+    deliveryToken: uuid("delivery_token"),
+    deliveryLeaseUntil: timestamp("delivery_lease_until", {
+      withTimezone: true,
+    }),
+    deliveryPayload: jsonb("delivery_payload").$type<{
+      from: string;
+      to: string;
+      subject: string;
+      text: string;
+    } | null>(),
+    deliveryAttempts: integer("delivery_attempts").default(0).notNull(),
+    deliveryError: text("delivery_error"),
+    providerMessageId: text("provider_message_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -201,6 +222,7 @@ export const reminders = pgTable(
       table.itemId,
       table.deadlineType,
       table.remindAt,
+      table.channel,
     ),
     index("reminders_due_idx").on(table.status, table.remindAt),
     foreignKey({
@@ -216,5 +238,34 @@ export const reminders = pgTable(
       "reminders_channel_valid",
       sql`${table.channel} IN ('in_app', 'email', 'push')`,
     ),
+  ],
+);
+
+export const documentJobs = pgTable(
+  "document_jobs",
+  {
+    documentId: uuid("document_id").primaryKey(),
+    userId: text("user_id").notNull(),
+    generation: integer("generation").default(1).notNull(),
+    status: text("status").default("queued").notNull(),
+    completedPages: integer("completed_pages").default(0).notNull(),
+    error: text("error"),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId, table.documentId],
+      foreignColumns: [documents.userId, documents.id],
+      name: "document_jobs_user_document_fk",
+    }).onDelete("cascade"),
+    index("document_jobs_dispatch_idx").on(table.status, table.dispatchedAt),
+    check(
+      "document_jobs_status_valid",
+      sql`${table.status} IN ('queued', 'reading', 'extracting', 'complete', 'failed')`,
+    ),
+    check("document_jobs_generation_positive", sql`${table.generation} > 0`),
   ],
 );
