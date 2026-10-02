@@ -13,8 +13,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentRouteImport } from './routes/agent'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as RemindersRouteImport } from './routes/reminders'
 import { Route as ScanRouteImport } from './routes/scan'
 import { Route as VaultRouteImport } from './routes/vault'
+import { Route as ApiInngestRouteImport } from './routes/api/inngest'
 import { Route as ItemItemIdRouteImport } from './routes/item.$itemId'
 import { Route as ReviewDocumentIdRouteImport } from './routes/review.$documentId'
 
@@ -38,6 +40,11 @@ const HomeRoute = HomeRouteImport.update({
   path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RemindersRoute = RemindersRouteImport.update({
+  id: '/reminders',
+  path: '/reminders',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ScanRoute = ScanRouteImport.update({
   id: '/scan',
   path: '/scan',
@@ -46,6 +53,11 @@ const ScanRoute = ScanRouteImport.update({
 const VaultRoute = VaultRouteImport.update({
   id: '/vault',
   path: '/vault',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInngestRoute = ApiInngestRouteImport.update({
+  id: '/api/inngest',
+  path: '/api/inngest',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ItemItemIdRoute = ItemItemIdRouteImport.update({
@@ -64,8 +76,10 @@ export interface FileRoutesByFullPath {
   '/agent': typeof AgentRoute
   '/auth': typeof AuthRoute
   '/home': typeof HomeRoute
+  '/reminders': typeof RemindersRoute
   '/scan': typeof ScanRoute
   '/vault': typeof VaultRoute
+  '/api/inngest': typeof ApiInngestRoute
   '/item/$itemId': typeof ItemItemIdRoute
   '/review/$documentId': typeof ReviewDocumentIdRoute
 }
@@ -74,8 +88,10 @@ export interface FileRoutesByTo {
   '/agent': typeof AgentRoute
   '/auth': typeof AuthRoute
   '/home': typeof HomeRoute
+  '/reminders': typeof RemindersRoute
   '/scan': typeof ScanRoute
   '/vault': typeof VaultRoute
+  '/api/inngest': typeof ApiInngestRoute
   '/item/$itemId': typeof ItemItemIdRoute
   '/review/$documentId': typeof ReviewDocumentIdRoute
 }
@@ -85,8 +101,10 @@ export interface FileRoutesById {
   '/agent': typeof AgentRoute
   '/auth': typeof AuthRoute
   '/home': typeof HomeRoute
+  '/reminders': typeof RemindersRoute
   '/scan': typeof ScanRoute
   '/vault': typeof VaultRoute
+  '/api/inngest': typeof ApiInngestRoute
   '/item/$itemId': typeof ItemItemIdRoute
   '/review/$documentId': typeof ReviewDocumentIdRoute
 }
@@ -97,8 +115,10 @@ export interface FileRouteTypes {
     | '/agent'
     | '/auth'
     | '/home'
+    | '/reminders'
     | '/scan'
     | '/vault'
+    | '/api/inngest'
     | '/item/$itemId'
     | '/review/$documentId'
   fileRoutesByTo: FileRoutesByTo
@@ -107,8 +127,10 @@ export interface FileRouteTypes {
     | '/agent'
     | '/auth'
     | '/home'
+    | '/reminders'
     | '/scan'
     | '/vault'
+    | '/api/inngest'
     | '/item/$itemId'
     | '/review/$documentId'
   id:
@@ -117,8 +139,10 @@ export interface FileRouteTypes {
     | '/agent'
     | '/auth'
     | '/home'
+    | '/reminders'
     | '/scan'
     | '/vault'
+    | '/api/inngest'
     | '/item/$itemId'
     | '/review/$documentId'
   fileRoutesById: FileRoutesById
@@ -128,8 +152,10 @@ export interface RootRouteChildren {
   AgentRoute: typeof AgentRoute
   AuthRoute: typeof AuthRoute
   HomeRoute: typeof HomeRoute
+  RemindersRoute: typeof RemindersRoute
   ScanRoute: typeof ScanRoute
   VaultRoute: typeof VaultRoute
+  ApiInngestRoute: typeof ApiInngestRoute
   ItemItemIdRoute: typeof ItemItemIdRoute
   ReviewDocumentIdRoute: typeof ReviewDocumentIdRoute
 }
@@ -164,6 +190,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reminders': {
+      id: '/reminders'
+      path: '/reminders'
+      fullPath: '/reminders'
+      preLoaderRoute: typeof RemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/scan': {
       id: '/scan'
       path: '/scan'
@@ -176,6 +209,13 @@ declare module '@tanstack/react-router' {
       path: '/vault'
       fullPath: '/vault'
       preLoaderRoute: typeof VaultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/inngest': {
+      id: '/api/inngest'
+      path: '/api/inngest'
+      fullPath: '/api/inngest'
+      preLoaderRoute: typeof ApiInngestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/item/$itemId': {
@@ -200,8 +240,10 @@ const rootRouteChildren: RootRouteChildren = {
   AgentRoute: AgentRoute,
   AuthRoute: AuthRoute,
   HomeRoute: HomeRoute,
+  RemindersRoute: RemindersRoute,
   ScanRoute: ScanRoute,
   VaultRoute: VaultRoute,
+  ApiInngestRoute: ApiInngestRoute,
   ItemItemIdRoute: ItemItemIdRoute,
   ReviewDocumentIdRoute: ReviewDocumentIdRoute,
 }

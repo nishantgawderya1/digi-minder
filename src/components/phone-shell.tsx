@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Bot, Home, Plus, Wallet } from "lucide-react";
+import { Bell, Bot, Home, Plus, Wallet } from "lucide-react";
 import { UserButton } from "@clerk/tanstack-react-start";
 import type { ReactNode } from "react";
 
@@ -7,6 +7,7 @@ const tabs = [
   { to: "/home", label: "Today", icon: Home },
   { to: "/vault", label: "Vault", icon: Wallet },
   { to: "/agent", label: "Assistant", icon: Bot },
+  { to: "/reminders", label: "Reminders", icon: Bell },
 ] as const;
 
 export function PhoneShell({
@@ -64,7 +65,7 @@ function DesktopRail() {
 function TabBar() {
   return (
     <nav className="fixed bottom-0 left-1/2 z-20 w-full max-w-[760px] -translate-x-1/2 border-t border-border bg-background/95 backdrop-blur lg:hidden">
-      <div className="grid grid-cols-[1fr_auto_1fr_1fr] items-end gap-1 px-3 pb-5 pt-2">
+      <div className="grid grid-cols-[1fr_auto_1fr_1fr_1fr] items-end gap-1 px-2 pb-5 pt-2">
         <TabLink {...tabs[0]} />
         <Link
           to="/scan"
@@ -75,6 +76,7 @@ function TabBar() {
         </Link>
         <TabLink {...tabs[1]} />
         <TabLink {...tabs[2]} />
+        <TabLink {...tabs[3]} />
       </div>
     </nav>
   );
@@ -119,7 +121,7 @@ function TabLink({
       to={to}
       activeProps={{ className: "text-primary" }}
       inactiveProps={{ className: "text-muted-foreground" }}
-      className="flex flex-col items-center gap-1 rounded-sm py-1 text-[11px] font-semibold uppercase tracking-wider"
+      className="flex min-w-0 flex-col items-center gap-1 rounded-sm py-1 text-[10px] font-semibold uppercase tracking-normal"
     >
       <Icon className="h-5 w-5" strokeWidth={2.2} />
       {label}

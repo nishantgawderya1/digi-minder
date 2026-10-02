@@ -83,7 +83,9 @@ function VaultScreen() {
                         ? "Upload incomplete"
                         : draft.status === "failed"
                           ? "Reading incomplete"
-                          : "Review details"}
+                          : draft.status === "processing"
+                            ? "Reading in background"
+                            : "Review details"}
                     </p>
                   </div>
                   <ArrowRight className="h-4 w-4 shrink-0" />

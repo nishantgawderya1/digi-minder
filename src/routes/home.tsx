@@ -78,6 +78,12 @@ function HomeScreen() {
             <h2 className="mb-3 flex items-center gap-2 text-lg font-bold">
               <Bell className="h-5 w-5 text-primary" />
               Reminders
+              <Link
+                to="/reminders"
+                className="ml-auto text-xs font-semibold text-primary"
+              >
+                View all
+              </Link>
             </h2>
             <div className="divide-y divide-border border-y border-border">
               {dueReminders.map((reminder) => (

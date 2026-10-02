@@ -12,7 +12,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PhoneShell } from "@/components/phone-shell";
 import { BillForm } from "@/components/bill-form";
 import { DocumentPreview } from "@/components/document-preview";
@@ -22,10 +22,12 @@ import {
   removeDraft,
   saveBill,
   unwrap,
+  queueReading,
 } from "@/lib/bill-functions";
 import { prepareDocument, readPreparedDocument } from "@/lib/document-client";
 import { requireCurrentUser } from "@/lib/route-auth";
 import type { BillFields } from "@/lib/bills";
+import { useDraftAutosave } from "@/hooks/use-draft-autosave";
 
 export const Route = createFileRoute("/review/$documentId")({
   beforeLoad: () => requireCurrentUser(),
@@ -46,13 +48,26 @@ export const Route = createFileRoute("/review/$documentId")({
 
 function ReviewScreen() {
   const data = Route.useLoaderData();
+  return <ReviewEditor key={data.id} />;
+}
+function ReviewEditor() {
+  const data = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState("");
-  const [version, setVersion] = useState(0);
+  const autosave = useDraftAutosave(data.id, data.revision);
+  const processing =
+    data.backgroundAvailable &&
+    data.job &&
+    ["queued", "reading", "extracting"].includes(data.job.status);
+  useEffect(() => {
+    if (!processing) return;
+    const timer = setInterval(() => void router.invalidate(), 2500);
+    return () => clearInterval(timer);
+  }, [processing, router]);
   const lowConfidence = data.pages.some(
     (page) => page.confidence !== null && Number(page.confidence) < 0.8,
   );
@@ -60,6 +75,7 @@ function ReviewScreen() {
     setSaving(true);
     setError(null);
     try {
+      await autosave.flush();
       const saved = unwrap(
         await saveBill({ data: { id: data.id, documentId: data.id, fields } }),
       );
@@ -76,17 +92,27 @@ function ReviewScreen() {
     }
   };
   const retry = async () => {
-    if (
-      !window.confirm(
-        "Read the original again? This replaces unsaved edits with the extracted details.",
-      )
-    )
-      return;
+    setReading(true);
+    setError(null);
+    try {
+      await autosave.flush();
+      unwrap(await queueReading({ data: { id: data.id } }));
+      await router.invalidate();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Reading couldn't be queued.",
+      );
+    } finally {
+      setReading(false);
+    }
+  };
+  const readLocally = async () => {
     setReading(true);
     setError(null);
     setProgress("Opening original");
     let prepared;
     try {
+      await autosave.flush();
       const { url } = unwrap(
         await getDocumentLink({ data: { id: data.id, download: false } }),
       );
@@ -102,7 +128,6 @@ function ReviewScreen() {
       );
       await readPreparedDocument(data.id, prepared, setProgress);
       await router.invalidate();
-      setVersion((value) => value + 1);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -121,6 +146,7 @@ function ReviewScreen() {
     setError(null);
     try {
       unwrap(await removeDraft({ data: { id: data.id } }));
+      await autosave.discard();
       await navigate({ to: "/vault" });
       await router.invalidate();
     } catch (cause) {
@@ -191,7 +217,7 @@ function ReviewScreen() {
           {data.status !== "pending" ? (
             <button
               onClick={retry}
-              disabled={reading || saving}
+              disabled={reading || saving || !!processing}
               className="inline-flex min-h-10 items-center gap-2 rounded-sm border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {reading ? (
@@ -199,7 +225,7 @@ function ReviewScreen() {
               ) : (
                 <RotateCcw className="h-4 w-4" />
               )}
-              {reading ? progress : "Retry reading"}
+              {reading ? progress || "Queueing" : "Retry reading"}
             </button>
           ) : (
             <Link
@@ -210,8 +236,36 @@ function ReviewScreen() {
               Upload again
             </Link>
           )}
+          {(data.status === "failed" ||
+            (!data.backgroundAvailable && data.status !== "pending")) &&
+          !processing ? (
+            <button
+              type="button"
+              onClick={() => void readLocally()}
+              disabled={reading || saving}
+              className="ml-3 text-sm font-semibold text-primary"
+            >
+              Read on this device
+            </button>
+          ) : null}
         </div>
         <div className="min-w-0 space-y-5">
+          {processing ? (
+            <div
+              role="status"
+              className="flex items-center gap-2 border-b border-border pb-3 text-sm"
+            >
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+              {data.job?.status === "queued"
+                ? "Queued for reading"
+                : data.job?.status === "extracting"
+                  ? "Extracting bill details"
+                  : `Reading pages (${data.job?.completedPages}/${data.pageCount})`}
+              <span className="ml-auto text-xs text-muted-foreground">
+                You can return later
+              </span>
+            </div>
+          ) : null}
           {data.extractionMethod === "nvidia-llm" ? (
             <p className="text-xs font-semibold text-primary">
               AI-extracted details · Awaiting your review
@@ -228,13 +282,31 @@ function ReviewScreen() {
                     : "Check the extracted values against your original. Missing details are left blank.")}
           </p>
           <BillForm
-            key={`${data.id}-${version}`}
+            key={data.id}
             initial={data.fields}
             onSave={persist}
             saving={saving}
             error={error}
             disabled={reading || data.status === "pending"}
+            onChange={autosave.change}
+            evidence={data.evidence}
+            draftPatch={data.draftPatch}
           />
+          <p role="status" className="text-xs text-muted-foreground">
+            {autosave.status}
+          </p>
+          {autosave.error ? (
+            <div role="alert" className="text-sm text-destructive">
+              {autosave.error}
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={() => void autosave.flush().catch(() => {})}
+              >
+                Retry saving
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </PhoneShell>
