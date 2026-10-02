@@ -69,7 +69,7 @@ export function readOcrResponse(payload: unknown) {
   };
 }
 
-function readDate(value: string | null) {
+export function readReceiptDate(value: string | null) {
   if (!value) return null;
   const clean = value.trim().replace(/(\d)(st|nd|rd|th)\b/gi, "$1");
   // Day-first numeric dates follow the app's Indian receipt locale. Review remains editable.
@@ -110,7 +110,16 @@ export function extractBillFields(text: string): BillFields {
     );
     for (const line of lines) {
       const match = line.match(expression);
-      if (match?.[1]) return match[1].trim().slice(0, max);
+      if (match?.[1]) {
+        const value = match[1].trim();
+        if (
+          /^(?:qty|quantity)\b.*\b(?:total|amount|price|discount)\b/i.test(
+            value,
+          )
+        )
+          continue;
+        return value.slice(0, max);
+      }
     }
     return null;
   };
@@ -126,7 +135,7 @@ export function extractBillFields(text: string): BillFields {
   fields.serialNumber = valueAfter("serial (?:no\\.?|number)|s/n|imei");
   fields.modelNumber = valueAfter("model (?:no\\.?|number)|model");
   fields.barcode = valueAfter("barcode|ean|upc|gtin");
-  fields.purchaseDate = readDate(
+  fields.purchaseDate = readReceiptDate(
     valueAfter(
       "purchase date|date of purchase|invoice date|bill date|receipt date|date",
     ),
@@ -160,12 +169,12 @@ export function extractBillFields(text: string): BillFields {
   )?.[1];
   if (returnDays) fields.returnWindowDays = Number(returnDays);
   fields.warrantyExpiresAt =
-    readDate(
+    readReceiptDate(
       valueAfter("warranty expires|warranty end date|warranty expiry"),
     ) ??
     deadlineFromDuration(fields.purchaseDate, fields.warrantyMonths, "months");
   fields.returnExpiresAt =
-    readDate(valueAfter("return by|return deadline")) ??
+    readReceiptDate(valueAfter("return by|return deadline")) ??
     deadlineFromDuration(fields.purchaseDate, fields.returnWindowDays, "days");
   return fields;
 }

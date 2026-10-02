@@ -1,47 +1,40 @@
 import { readOcrResponse } from "./ocr";
 import { ServiceError } from "./service-error.server";
+import { nvidiaJson } from "./nvidia.server";
 
 export async function runOcr(imageDataUrl: string) {
   const apiKey = process.env["NVIDIA_NEMOTRON_OCR_API_KEY"];
   if (!apiKey)
     throw new ServiceError(
-      "Automatic reading is unavailable. You can enter the bill details manually.",
+      "NVIDIA OCR is not configured on this server. Enter the details manually or try again after setup.",
     );
   const endpoint =
     process.env["NVIDIA_NEMOTRON_OCR_URL"] ||
     "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1";
+  const payload = await nvidiaJson(
+    endpoint,
+    apiKey,
+    {
+      input: [{ type: "image_url", url: imageDataUrl }],
+      merge_levels: ["word"],
+    },
+    "OCR",
+  );
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        input: [{ type: "image_url", url: imageDataUrl }],
-        merge_levels: ["word"],
-      }),
-      signal: AbortSignal.timeout(50_000),
-    });
-    if (!response.ok) {
-      if (response.status === 429)
-        throw new ServiceError(
-          "The document reader is busy. Please retry shortly.",
-        );
+    const result = readOcrResponse(payload);
+    if (!result.text.trim())
       throw new ServiceError(
-        "The document reader is unavailable. Retry or enter the details manually.",
+        "No readable text was found. Try a clearer, upright photo with the full bill in focus, or enter the details manually.",
       );
-    }
-    if (response.status === 202)
+    if (result.confidence !== null && result.confidence < 0.85)
       throw new ServiceError(
-        "The document reader is taking longer than expected. Please retry shortly.",
+        "NVIDIA OCR could not read this page confidently. Trying local OCR is recommended before reviewing the details.",
       );
-    return readOcrResponse(await response.json());
+    return result;
   } catch (error) {
     if (error instanceof ServiceError) throw error;
     throw new ServiceError(
-      "We couldn't read this page. Retry or enter the details manually.",
+      "NVIDIA OCR returned an unexpected response. Retry or enter the details manually.",
     );
   }
 }
