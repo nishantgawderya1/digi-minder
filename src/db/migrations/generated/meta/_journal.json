@@ -8,6 +8,20 @@
       "when": 1790855936278,
       "tag": "0000_slimy_kree",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790935534759,
+      "tag": "0001_loud_kree",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790936791009,
+      "tag": "0002_tidy_harpoon",
+      "breakpoints": true
     }
   ]
 }
