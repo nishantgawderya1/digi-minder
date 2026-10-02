@@ -124,6 +124,25 @@ export async function deleteStoredFile(key: string) {
   const { client, bucket } = storage();
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
+export async function readStoredOriginal(key: string, contentType: string) {
+  const { client, bucket } = storage();
+  const response = await client.send(
+    new GetObjectCommand({ Bucket: bucket, Key: key }),
+  );
+  if (
+    !response.Body ||
+    !response.ContentLength ||
+    response.ContentLength > MAX_FILE_BYTES
+  )
+    throw new ServiceError("The original document is unavailable.");
+  const bytes = await response.Body.transformToByteArray();
+  if (
+    bytes.length > MAX_FILE_BYTES ||
+    !matchesFileSignature(bytes, contentType)
+  )
+    throw new ServiceError("The stored original is invalid.");
+  return bytes;
+}
 export async function signedDownload(
   key: string,
   filename: string,
