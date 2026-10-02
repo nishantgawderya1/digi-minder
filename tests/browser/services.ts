@@ -93,7 +93,10 @@ export const readDocumentPage = async ({
 }: {
   data: { pageIndex: number; imageDataUrl: string };
 }) => {
-  if (sessionStorage.getItem("ocr-failure") === "true")
+  if (
+    sessionStorage.getItem("ocr-failure") === "true" ||
+    sessionStorage.getItem("ocr-unavailable") === "true"
+  )
     return { ok: false as const, error: "Reader unavailable" };
   if (!data.imageDataUrl.startsWith("data:image/jpeg;base64,"))
     throw new Error("Not a rasterized page");
@@ -115,6 +118,21 @@ export const finishReading = async () => {
   );
   persist(current);
   return ok({ id });
+};
+export const acceptLocalPage = async ({
+  data,
+}: {
+  data: { pageIndex: number; text: string; confidence: number | null };
+}) => {
+  const current = state();
+  current.draft!.pages.push({
+    pageIndex: data.pageIndex,
+    text: data.text,
+    confidence: String(data.confidence),
+    status: "complete",
+  });
+  persist(current);
+  return ok({ pageIndex: data.pageIndex });
 };
 export const saveBill = async ({
   data,

@@ -52,6 +52,21 @@ async function noOverflow(page: Page) {
     ),
   ).toBe(true);
 }
+test("PDF decoder assets are served as binaries, not the app HTML fallback", async ({
+  request,
+}) => {
+  for (const file of ["jbig2.wasm", "openjpeg.wasm", "qcms_bg.wasm"]) {
+    const response = await request.get(`/pdf-assets/wasm/${file}`);
+    expect(response.ok()).toBe(true);
+    expect((await response.body()).subarray(0, 4)).toEqual(
+      Buffer.from([0, 97, 115, 109]),
+    );
+  }
+  const fallback = await request.get(
+    "/pdf-assets/wasm/jbig2_nowasm_fallback.js",
+  );
+  expect(fallback.headers()["content-type"]).toContain("javascript");
+});
 test("empty accounts never display sample records", async ({ page }) => {
   await page.goto("/home");
   await expect(page.getByText("Your vault is empty.")).toBeVisible();
@@ -60,6 +75,86 @@ test("empty accounts never display sample records", async ({ page }) => {
     path: test.info().outputPath("home-empty.png"),
     fullPage: true,
   });
+});
+test("assistant asks scoped questions, shows sources, and recovers from provider errors", async ({
+  page,
+}) => {
+  await page.goto("/scan");
+  await upload(page);
+  await page.getByRole("button", { name: "Save to vault" }).click();
+  await page.goto("/agent");
+  await page
+    .getByLabel("Your question")
+    .fill("What is the price and warranty end date?");
+  await page.getByRole("button", { name: "Send question" }).click();
+  await expect(page.getByRole("log")).toContainText(
+    "No warranty end date is recorded.",
+  );
+  await expect(
+    page.getByRole("log").getByRole("link", { name: "Test lamp" }),
+  ).toBeVisible();
+  await noOverflow(page);
+  await page.screenshot({
+    path: test.info().outputPath("assistant-chat.png"),
+    fullPage: true,
+  });
+  await page.evaluate(() => sessionStorage.setItem("chat-unavailable", "true"));
+  await page.getByLabel("Your question").fill("What is the serial number?");
+  await page.getByRole("button", { name: "Send question" }).click();
+  await expect(page.getByRole("alert")).toContainText("timed out");
+  await expect(page.getByLabel("Your question")).toHaveValue(
+    "What is the serial number?",
+  );
+  await page.evaluate(() => sessionStorage.removeItem("chat-unavailable"));
+  await page.getByRole("button", { name: "Send question" }).click();
+  await expect(page.getByLabel("Your question")).toHaveValue("");
+  const request = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem("test-chat-request")!),
+  );
+  expect(request.messages).toHaveLength(3);
+  await page.getByRole("button", { name: "New chat" }).click();
+  await expect(page.getByRole("log")).not.toContainText("recorded price");
+  await page.getByRole("tab", { name: "Support draft" }).click();
+  await expect(
+    page.getByRole("button", { name: "Prepare draft" }),
+  ).toBeVisible();
+});
+test("digital PDF text preserves exact identifiers without OCR", async ({
+  page,
+}) => {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const document = pdf.addPage([500, 700]);
+  [
+    "Product name: Exact PDF item",
+    "Invoice number: PDF-00123",
+    "Serial number: 00001002",
+    "Total: INR 170.00",
+    "Invoice date: 07/04/2026",
+  ].forEach((line, index) =>
+    document.drawText(line, { x: 30, y: 600 - index * 40, font, size: 16 }),
+  );
+  await page.goto("/scan");
+  await page.evaluate(() => {
+    sessionStorage.setItem("ocr-failure", "true");
+    sessionStorage.setItem("tesseract-unavailable", "true");
+  });
+  await interceptUpload(page);
+  await page.getByLabel("Choose a bill document").setInputFiles({
+    name: "digital.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await pdf.save()),
+  });
+  await expect(
+    page.getByRole("heading", { name: "Check the details" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Bill / item name")).toHaveValue(
+    "Exact PDF item",
+  );
+  await expect(page.getByLabel("Serial number / IMEI")).toHaveValue("00001002");
+  await expect(page.getByLabel("Purchase date", { exact: true })).toHaveValue(
+    "2026-04-07",
+  );
 });
 test("image upload, OCR review, correction, persistence, editing, filtering and deletion", async ({
   page,
@@ -121,6 +216,9 @@ test("image upload, OCR review, correction, persistence, editing, filtering and 
 test("OCR unavailable leaves unknown details blank and allows a manual save", async ({
   page,
 }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem("tesseract-unavailable", "true"),
+  );
   await page.goto("/scan");
   await page.evaluate(() => sessionStorage.setItem("ocr-unavailable", "true"));
   await upload(page);
@@ -134,6 +232,25 @@ test("OCR unavailable leaves unknown details blank and allows a manual save", as
   await expect(
     page.getByRole("heading", { name: "Manually reviewed bill" }),
   ).toBeVisible();
+});
+test("Tesseract reads a real image locally when NVIDIA OCR fails", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.goto("/scan");
+  await page.evaluate(() => sessionStorage.setItem("ocr-failure", "true"));
+  await interceptUpload(page);
+  await page.getByLabel("Choose a bill image").setInputFiles({
+    name: "local-ocr.png",
+    mimeType: "image/png",
+    buffer: await receiptImage(page),
+  });
+  await expect(
+    page.getByRole("heading", { name: "Check the details" }),
+  ).toBeVisible({ timeout: 110_000 });
+  await expect(page.getByLabel("Serial number / IMEI")).toHaveValue("001234");
+  await expect(page.getByLabel("Bill / item name")).toHaveValue("Test lamp");
+  await noOverflow(page);
 });
 test("invalid formats are rejected before creating a draft", async ({
   page,
