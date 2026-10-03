@@ -3,9 +3,8 @@ import { UserButton, useUser } from "@clerk/tanstack-react-start";
 import {
   ArrowRight,
   Bell,
-  Bot,
   CalendarDays,
-  Plus,
+  FileClock,
   ScanLine,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -53,23 +52,61 @@ function HomeScreen() {
           </div>
         }
       />
-      <div className="space-y-8 p-5 lg:p-8">
-        <section aria-label="Quick actions" className="grid grid-cols-2 gap-3">
+      <div className="space-y-6 p-5 lg:p-8">
+        <section
+          aria-label="Bill actions"
+          className="flex items-center justify-between gap-3"
+        >
           <Link
             to="/scan"
-            className="flex min-h-24 min-w-0 items-center gap-3 rounded-sm border border-primary bg-primary px-4 py-4 font-bold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="inline-flex min-h-11 items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <ScanLine className="h-6 w-6 shrink-0" />
-            <span className="break-words text-sm">Scan a bill</span>
-          </Link>
-          <Link
-            to="/agent"
-            className="flex min-h-24 min-w-0 items-center gap-3 rounded-sm border border-border bg-card px-4 py-4 font-bold transition hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <Bot className="h-6 w-6 shrink-0 text-primary" />
-            <span className="break-words text-sm">Ask assistant</span>
+            <ScanLine className="h-4 w-4 shrink-0" />
+            Add a bill
           </Link>
         </section>
+        {drafts.length ? (
+          <section aria-label="Bills in progress">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-bold">
+                Bills in progress ({drafts.length})
+              </h2>
+              <Link to="/vault" className="text-xs font-semibold text-primary">
+                View all
+              </Link>
+            </div>
+            <div className="divide-y divide-border border-y border-border">
+              {drafts.slice(0, 3).map((draft) => (
+                <Link
+                  to="/review/$documentId"
+                  params={{ documentId: draft.id }}
+                  key={draft.id}
+                  className="flex min-h-16 items-center gap-3 py-3"
+                >
+                  <FileClock className="h-5 w-5 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="truncate text-sm font-semibold"
+                      title={draft.filename}
+                    >
+                      {draft.filename}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {draft.status === "pending"
+                        ? "Upload incomplete"
+                        : draft.status === "failed"
+                          ? "Reading incomplete"
+                          : draft.status === "processing"
+                            ? "Reading in background"
+                            : "Ready to review"}
+                    </p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0" />
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <section
           className="grid grid-cols-2 gap-x-5 gap-y-6 border-b border-border pb-6 xl:grid-cols-4"
           aria-label="Vault totals"
@@ -86,16 +123,6 @@ function HomeScreen() {
             </div>
           ))}
         </section>
-        {drafts.length ? (
-          <Link
-            to="/vault"
-            className="flex items-center justify-between gap-3 border-l-4 border-accent bg-secondary px-4 py-3 text-sm font-semibold"
-          >
-            {drafts.length} {drafts.length === 1 ? "bill needs" : "bills need"}{" "}
-            review
-            <ArrowRight className="h-4 w-4 shrink-0" />
-          </Link>
-        ) : null}
         {dueReminders.length ? (
           <section>
             <h2 className="mb-3 flex items-center gap-2 text-lg font-bold">
@@ -132,70 +159,67 @@ function HomeScreen() {
             </div>
           </section>
         ) : null}
-        <section>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-bold">Upcoming deadlines</h2>
-            <CalendarDays className="h-5 w-5 text-primary" />
-          </div>
-          {deadlines.length ? (
-            <div className="divide-y divide-border border-y border-border">
-              {deadlines.map(({ bill, type, date }) => (
-                <Link
-                  key={`${bill.id}-${type}`}
-                  to="/item/$itemId"
-                  params={{ itemId: bill.id }}
-                  className="flex flex-wrap items-center justify-between gap-3 py-4"
-                >
-                  <div className="min-w-0">
-                    <p className="break-words text-sm font-bold">{bill.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {type} deadline
-                    </p>
-                  </div>
-                  <span className="text-sm font-semibold text-primary">
-                    {displayDate(date)}
-                  </span>
-                </Link>
-              ))}
+        <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <section className="min-w-0">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-bold">Upcoming deadlines</h2>
+              <CalendarDays className="h-5 w-5 text-primary" />
             </div>
-          ) : (
-            <p className="border-y border-border py-6 text-sm text-muted-foreground">
-              No upcoming deadlines recorded.
-            </p>
-          )}
-        </section>
-        <section>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold">Recent bills</h2>
-            <Link
-              to="/vault"
-              className="inline-flex items-center gap-1 text-xs font-bold text-primary"
-            >
-              View vault
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          {bills.length ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {bills.slice(0, 4).map((bill) => (
-                <BillCard key={bill.id} bill={bill} />
-              ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                Your vault is empty.
+            {deadlines.length ? (
+              <div className="divide-y divide-border border-y border-border">
+                {deadlines.map(({ bill, type, date }) => (
+                  <Link
+                    key={`${bill.id}-${type}`}
+                    to="/item/$itemId"
+                    params={{ itemId: bill.id }}
+                    className="flex flex-wrap items-center justify-between gap-3 py-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-bold">
+                        {bill.name}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {type} deadline
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold text-primary">
+                      {displayDate(date)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="border-y border-border py-6 text-sm text-muted-foreground">
+                No upcoming deadlines recorded.
               </p>
+            )}
+          </section>
+          <section className="min-w-0">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold">Recent bills</h2>
               <Link
-                to="/scan"
-                className="mt-4 inline-flex items-center gap-2 rounded-sm bg-primary px-5 py-3 text-sm font-bold text-primary-foreground"
+                to="/vault"
+                className="inline-flex items-center gap-1 text-xs font-bold text-primary"
               >
-                <Plus className="h-4 w-4" />
-                Add your first bill
+                View vault
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
-          )}
-        </section>
+            {bills.length ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {bills.slice(0, 4).map((bill) => (
+                  <BillCard key={bill.id} bill={bill} />
+                ))}
+              </div>
+            ) : (
+              <div className="border-y border-border py-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Your vault is empty.
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </PhoneShell>
   );

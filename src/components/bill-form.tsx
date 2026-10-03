@@ -17,6 +17,8 @@ export function BillForm({
   onChange,
   evidence = {},
   draftPatch = {},
+  warnMissingName = false,
+  missingNameMessage = "Item name not found in the extracted details.",
 }: {
   initial: BillFields;
   onSave: (fields: BillFields) => void;
@@ -26,6 +28,8 @@ export function BillForm({
   onChange?: (patch: DraftPatch) => void;
   evidence?: FieldEvidence;
   draftPatch?: DraftPatch;
+  warnMissingName?: boolean;
+  missingNameMessage?: string;
 }) {
   const [fields, setFields] = useState(initial);
   const [validation, setValidation] = useState<string | null>(null);
@@ -174,8 +178,21 @@ export function BillForm({
         }
         maxLength={max}
         required={key === "name"}
-        className={inputClass}
+        aria-describedby={
+          key === "name" && warnMissingName && !fields.name
+            ? "bill-name-missing"
+            : undefined
+        }
+        className={`${inputClass} ${key === "name" && warnMissingName && !fields.name ? "border-accent" : ""}`}
       />
+      {key === "name" && warnMissingName && !fields.name ? (
+        <p
+          id="bill-name-missing"
+          className="mt-1 text-xs font-normal text-muted-foreground"
+        >
+          {missingNameMessage}
+        </p>
+      ) : null}
       {provenance(key)}
     </div>
   );

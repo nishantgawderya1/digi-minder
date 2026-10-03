@@ -291,6 +291,18 @@ function ReviewEditor() {
             onChange={autosave.change}
             evidence={data.evidence}
             draftPatch={data.draftPatch}
+            warnMissingName={data.status === "review" && !data.fields.name}
+            missingNameMessage={
+              data.nameIssue === "ambiguous"
+                ? "Choose the purchased item from the invoice and enter its name."
+                : data.nameIssue === "rejected"
+                  ? "The suggested name could not be verified against the source. Enter the item name from the original."
+                  : data.nameIssue === "unreadable"
+                    ? "The item description was difficult to read. Check the original and enter its name."
+                    : data.nameIssue === "absent"
+                      ? "No item name was found on the invoice. Enter the purchased item's name."
+                      : "Item name not found in the extracted details."
+            }
           />
           <p role="status" className="text-xs text-muted-foreground">
             {autosave.status}

@@ -17,14 +17,19 @@ describe("Server document rendering", () => {
     ].forEach((line, index) =>
       page.drawText(line, { font, size: 18, x: 30, y: 600 - index * 40 }),
     );
-    const result = await prepareServerPage(
-      await pdf.save(),
-      "application/pdf",
-      0,
-    );
+    const bytes = await pdf.save();
+    const result = await prepareServerPage(bytes.slice(), "application/pdf", 0);
     expect(result.text).toContain("00001002");
     expect(result.text).toContain("PDF-00045");
     expect(result.imageDataUrl).toBeNull();
+    const raster = await prepareServerPage(
+      bytes.slice(),
+      "application/pdf",
+      0,
+      { forceRaster: true },
+    );
+    expect(raster.text).toBeNull();
+    expect(raster.imageDataUrl).toMatch(/^data:image\/(?:png|jpeg);base64,/);
   });
   it("renders sparse PDF pages into a nonblank image on the server", async () => {
     const pdf = await PDFDocument.create();
@@ -36,7 +41,7 @@ describe("Server document rendering", () => {
       0,
     );
     expect(result.text).toBeNull();
-    expect(result.imageDataUrl).toMatch(/^data:image\/jpeg;base64,/);
+    expect(result.imageDataUrl).toMatch(/^data:image\/(?:png|jpeg);base64,/);
     const image = await loadImage(
       Buffer.from(result.imageDataUrl!.split(",")[1]!, "base64"),
     );
@@ -59,7 +64,7 @@ describe("Server document rendering", () => {
     const image = await loadImage(
       Buffer.from(result.imageDataUrl!.split(",")[1]!, "base64"),
     );
-    expect(Math.max(image.width, image.height)).toBe(2200);
+    expect(Math.max(image.width, image.height)).toBe(3000);
     await expect(
       prepareServerPage(new Uint8Array([1, 2]), "application/pdf", 0),
     ).rejects.toThrow();
