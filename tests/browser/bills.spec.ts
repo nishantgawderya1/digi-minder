@@ -22,7 +22,7 @@ async function receiptImage(page: Page) {
   });
   return Buffer.from(data, "base64");
 }
-async function interceptUpload(page: Page) {
+async function interceptUpload(page: Page, beforeFulfill?: Promise<void>) {
   await page.route("**/test-original-upload", async (route) => {
     const body = route.request().postDataBuffer()!;
     const url = `data:${route.request().headers()["content-type"]};base64,${body.toString("base64")}`;
@@ -31,6 +31,7 @@ async function interceptUpload(page: Page) {
       state.draft.previewUrl = previewUrl;
       sessionStorage.setItem("test-vault", JSON.stringify(state));
     }, url);
+    await beforeFulfill;
     await route.fulfill({ status: 200 });
   });
 }
@@ -55,6 +56,130 @@ async function noOverflow(page: Page) {
     ),
   ).toBe(true);
 }
+async function unobscured(page: Page, name: string) {
+  const button = page.getByRole("button", { name, exact: true });
+  const box = await button.boundingBox();
+  expect(box).not.toBeNull();
+  const viewport = page.viewportSize()!;
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+  expect(
+    await button.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return element.contains(
+        document.elementFromPoint(
+          rect.x + rect.width / 2,
+          rect.y + rect.height / 2,
+        ),
+      );
+    }),
+  ).toBe(true);
+}
+test("Today restores its two quick actions above the totals", async ({
+  page,
+}) => {
+  if (test.info().project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/home");
+  const actions = page.getByRole("region", { name: "Quick actions" });
+  await expect(
+    actions.getByRole("link", { name: "Scan a bill", exact: true }),
+  ).toBeInViewport();
+  await expect(
+    actions.getByRole("link", { name: "Ask assistant", exact: true }),
+  ).toBeInViewport();
+  await noOverflow(page);
+  await page.screenshot({
+    path: test.info().outputPath("today-actions.png"),
+    fullPage: true,
+  });
+  await actions.getByRole("link", { name: "Scan a bill", exact: true }).click();
+  await expect(page).toHaveURL(/\/scan$/);
+  await page.getByRole("link", { name: "Back to Today" }).click();
+  await page.getByRole("link", { name: "Ask assistant", exact: true }).click();
+  await expect(page).toHaveURL(/\/agent$/);
+});
+test("upload controls remain reachable while short mobile pages scroll", async ({
+  page,
+}) => {
+  if (test.info().project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/scan");
+  for (const name of ["Camera", "Image", "Document"])
+    await unobscured(page, name);
+  await page.getByLabel("Choose a bill document").setInputFiles({
+    name: "unsafe.html",
+    mimeType: "text/html",
+    buffer: Buffer.from("bad file"),
+  });
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByRole("alert").scrollIntoViewIfNeeded();
+  const alert = await page.getByRole("alert").boundingBox();
+  const options = await page
+    .getByRole("group", { name: "Bill upload options" })
+    .boundingBox();
+  if (test.info().project.name === "mobile")
+    expect(alert!.y + alert!.height).toBeLessThanOrEqual(options!.y);
+  for (const name of ["Camera", "Image", "Document"])
+    await unobscured(page, name);
+  await noOverflow(page);
+  await page.screenshot({
+    path: test.info().outputPath("upload-controls.png"),
+    fullPage: true,
+  });
+});
+test("uploads automatically read and fill review when hosted jobs are disabled", async ({
+  page,
+}) => {
+  await page.goto("/scan");
+  await page.evaluate(() =>
+    sessionStorage.setItem("background-disabled", "true"),
+  );
+  await upload(page);
+  await expect(page.getByLabel("Bill / item name")).toHaveValue("Test lamp");
+  await expect(page.getByLabel("Serial number / IMEI")).toHaveValue("001234");
+  await expect(page.getByLabel("Amount paid")).toHaveValue("120.00");
+});
+test("upload progress stays above mobile controls and prevents duplicate uploads", async ({
+  page,
+}) => {
+  if (test.info().project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 568 });
+  let release!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.goto("/scan");
+  await interceptUpload(page, paused);
+  await page.getByLabel("Choose a bill image").setInputFiles({
+    name: "bill.png",
+    mimeType: "image/png",
+    buffer: await receiptImage(page),
+  });
+  await expect(page.getByRole("status")).toContainText("Uploading original");
+  for (const name of ["Camera", "Image", "Document"])
+    await expect(
+      page.getByRole("button", { name, exact: true }),
+    ).toBeDisabled();
+  if (test.info().project.name === "mobile") {
+    await expect
+      .poll(async () => {
+        const progress = await page.getByRole("status").boundingBox();
+        const options = await page
+          .getByRole("group", { name: "Bill upload options" })
+          .boundingBox();
+        return progress!.y >= 0 && progress!.y + progress!.height <= options!.y;
+      })
+      .toBe(true);
+  }
+  await page.screenshot({
+    path: test.info().outputPath("upload-progress.png"),
+  });
+  release();
+  await expect(
+    page.getByRole("heading", { name: "Check the details" }),
+  ).toBeVisible();
+});
 test("PDF decoder assets are served as binaries, not the app HTML fallback", async ({
   request,
 }) => {
@@ -464,6 +589,8 @@ test("multi-page PDFs are rasterized page by page, and oversized page counts are
 test("camera capture creates a review and stops the camera tracks", async ({
   page,
 }) => {
+  if (test.info().project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 568 });
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => {
       const canvas = document.createElement("canvas");
@@ -488,6 +615,33 @@ test("camera capture creates a review and stops the camera tracks", async ({
   await expect(
     page.getByRole("button", { name: "Take photo", exact: true }),
   ).toBeEnabled();
+  await unobscured(page, "Take photo");
+  if (test.info().project.name === "mobile") {
+    await page.setViewportSize({ width: 568, height: 320 });
+    await unobscured(page, "Take photo");
+    await unobscured(page, "Image");
+    await unobscured(page, "Document");
+    const landscapeShutter = await page
+      .getByRole("button", { name: "Take photo", exact: true })
+      .boundingBox();
+    const landscapeOptions = await page
+      .getByRole("group", { name: "Bill upload options" })
+      .boundingBox();
+    expect(landscapeShutter!.y + landscapeShutter!.height).toBeLessThanOrEqual(
+      landscapeOptions!.y,
+    );
+    await page.setViewportSize({ width: 320, height: 568 });
+  }
+  const preview = await page.getByLabel("Live camera preview").boundingBox();
+  const shutter = await page
+    .getByRole("button", { name: "Take photo", exact: true })
+    .boundingBox();
+  expect(shutter!.y).toBeGreaterThanOrEqual(preview!.y + preview!.height);
+  await noOverflow(page);
+  await page.screenshot({
+    path: test.info().outputPath("camera-shutter.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Take photo", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Check the details" }),

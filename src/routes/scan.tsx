@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Camera,
   FileUp,
+  ScanLine,
   Images,
   LoaderCircle,
   X,
@@ -24,6 +25,7 @@ export function ScanScreen() {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraPending, setCameraPending] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -34,8 +36,11 @@ export function ScanScreen() {
   const cameraRequest = useRef(0);
   const mounted = useRef(true);
   const fileLock = useRef(false);
+  const captureLock = useRef(false);
   const imageInput = useRef<HTMLInputElement>(null);
   const documentInput = useRef<HTMLInputElement>(null);
+  const errorMessage = useRef<HTMLParagraphElement>(null);
+  const progressMessage = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -47,7 +52,16 @@ export function ScanScreen() {
     };
   }, []);
   useEffect(() => {
-    if (video.current && cameraActive) video.current.srcObject = stream.current;
+    if (video.current && cameraActive) {
+      const generation = cameraRequest.current;
+      video.current.srcObject = stream.current;
+      void video.current.play().catch(() => {
+        if (mounted.current && generation === cameraRequest.current)
+          setError(
+            "The camera preview couldn't play. Reopen the camera or choose a file.",
+          );
+      });
+    }
   }, [cameraActive]);
   useEffect(() => {
     if (!selectedFile) return;
@@ -55,6 +69,12 @@ export function ScanScreen() {
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [selectedFile]);
+  useEffect(() => {
+    if (error) errorMessage.current?.scrollIntoView({ block: "center" });
+  }, [error]);
+  useEffect(() => {
+    if (busy) progressMessage.current?.scrollIntoView({ block: "center" });
+  }, [busy, progress, selectedFile, previewUrl]);
 
   const stopCamera = () => {
     cameraRequest.current++;
@@ -65,8 +85,9 @@ export function ScanScreen() {
     setCameraPending(false);
   };
   const startCamera = async () => {
-    if (cameraPending || cameraActive || busy) return;
+    if (cameraPending || cameraActive || busy || captureLock.current) return;
     setError(null);
+    setSelectedFile(null);
     if (!navigator.mediaDevices?.getUserMedia) {
       setError(
         "Camera access requires HTTPS or localhost. You can also choose a file.",
@@ -138,31 +159,50 @@ export function ScanScreen() {
     }
   };
   const takePhoto = async () => {
-    if (!video.current?.videoWidth || !cameraReady || busy) return;
+    if (
+      !video.current?.videoWidth ||
+      !cameraReady ||
+      busy ||
+      captureLock.current
+    )
+      return;
+    captureLock.current = true;
+    setCapturing(true);
+    const generation = cameraRequest.current;
     const canvas = document.createElement("canvas");
     canvas.width = video.current.videoWidth;
     canvas.height = video.current.videoHeight;
     const context = canvas.getContext("2d");
     if (!context) {
       setError("The photo couldn't be captured. Please try again.");
+      captureLock.current = false;
+      setCapturing(false);
       return;
     }
-    context.drawImage(video.current, 0, 0);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.94),
-    );
-    canvas.width = 0;
-    canvas.height = 0;
-    if (blob && mounted.current)
+    try {
+      context.drawImage(video.current, 0, 0);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.94),
+      );
+      if (!mounted.current || generation !== cameraRequest.current) return;
+      if (!blob)
+        throw new Error("The photo couldn't be captured. Please try again.");
       await handleFile(
         new File([blob], `bill-${Date.now()}.jpg`, { type: "image/jpeg" }),
       );
-    else if (mounted.current)
-      setError("The photo couldn't be captured. Please try again.");
+    } catch {
+      if (mounted.current)
+        setError("The photo couldn't be captured. Please try again.");
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+      captureLock.current = false;
+      if (mounted.current) setCapturing(false);
+    }
   };
 
   return (
-    <PhoneShell>
+    <PhoneShell showMobileTabs={false}>
       <header className="flex items-center gap-3 border-b border-border px-5 py-4 lg:px-8">
         <Link
           to="/home"
@@ -174,15 +214,17 @@ export function ScanScreen() {
         </Link>
         <h1 className="text-base font-extrabold">Add a bill</h1>
       </header>
-      <div className="grid min-w-0 gap-6 px-5 pt-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:px-8">
-        {busy && selectedFile ? (
+      <div className="grid min-w-0 gap-5 px-5 pt-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:px-8">
+        {selectedFile && !cameraActive ? (
           <DocumentPreview
             url={previewUrl}
             filename={selectedFile.name}
             contentType={selectedFile.type}
           />
         ) : (
-          <div className="relative aspect-[3/4] overflow-hidden rounded-sm border border-foreground bg-foreground">
+          <div
+            className={`relative overflow-hidden rounded-sm border border-foreground bg-foreground ${cameraActive ? "h-[min(58svh,calc(100svh-208px))] min-h-32" : "h-[min(48svh,420px)] min-h-52"} lg:h-[520px]`}
+          >
             {cameraActive ? (
               <video
                 ref={video}
@@ -190,21 +232,40 @@ export function ScanScreen() {
                 playsInline
                 muted
                 onCanPlay={() => setCameraReady(true)}
-                className="absolute inset-0 h-full w-full object-contain"
+                className="absolute inset-x-0 top-0 h-[calc(100%-96px)] w-full object-contain"
                 aria-label="Live camera preview"
               />
             ) : (
-              <div className="hatch absolute inset-0 opacity-30" />
+              <div className="absolute inset-0 grid place-content-center gap-3 text-center text-background/70">
+                <ScanLine className="mx-auto h-12 w-12" strokeWidth={1.5} />
+                <p className="text-sm font-semibold">No bill selected</p>
+              </div>
             )}
-            <div className="pointer-events-none absolute inset-6 border-2 border-dashed border-background/50" />
-            <p className="absolute inset-x-0 bottom-4 px-6 text-center text-xs font-semibold text-background">
-              {cameraActive
-                ? "Fit the full bill in the frame"
-                : "Ready for your next receipt"}
-            </p>
+            <div
+              className={`pointer-events-none absolute inset-x-6 top-6 border-2 border-dashed border-background/50 ${cameraActive ? "bottom-28" : "bottom-6"}`}
+            />
+            {cameraActive ? (
+              <div className="absolute inset-x-0 bottom-0 flex justify-center bg-foreground/70 py-4">
+                <button
+                  type="button"
+                  aria-label="Take photo"
+                  title="Take photo"
+                  onClick={() => void takePhoto()}
+                  disabled={!cameraReady || capturing || busy}
+                  className="grid h-16 w-16 shrink-0 place-items-center rounded-full border-4 border-background bg-primary text-primary-foreground outline-offset-4 focus-visible:outline-2 focus-visible:outline-background disabled:opacity-50"
+                >
+                  {capturing ? (
+                    <LoaderCircle className="h-6 w-6 animate-spin" />
+                  ) : (
+                    <Camera className="h-7 w-7" />
+                  )}
+                </button>
+              </div>
+            ) : null}
             {cameraActive || cameraPending ? (
               <button
                 onClick={stopCamera}
+                disabled={busy}
                 title="Close camera"
                 aria-label="Close camera"
                 className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-sm bg-background text-foreground"
@@ -215,14 +276,9 @@ export function ScanScreen() {
           </div>
         )}
         <div className="min-w-0 space-y-5 lg:pt-2">
-          <div>
-            <h2 className="text-xl font-extrabold">
-              Keep the original. Check every detail.
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Bills, invoices and warranty cards.
-            </p>
-          </div>
+          <h2 className="hidden text-lg font-bold lg:block">
+            Bill, invoice or warranty card
+          </h2>
           <input
             ref={imageInput}
             type="file"
@@ -247,11 +303,16 @@ export function ScanScreen() {
               if (file) void handleFile(file);
             }}
           />
-          <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+          <div
+            role="group"
+            aria-label="Bill upload options"
+            className="fixed bottom-0 left-1/2 z-30 grid w-full max-w-[760px] -translate-x-1/2 grid-cols-3 gap-2 border-t border-border bg-background px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] lg:static lg:max-w-none lg:translate-x-0 lg:grid-cols-1 lg:border-0 lg:bg-transparent lg:p-0"
+          >
             <button
-              onClick={cameraActive ? takePhoto : startCamera}
-              disabled={busy || cameraPending || (cameraActive && !cameraReady)}
-              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-sm bg-primary px-2 py-3 text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] disabled:opacity-50 lg:flex-row"
+              onClick={cameraActive ? stopCamera : startCamera}
+              aria-pressed={cameraActive}
+              disabled={busy || cameraPending || capturing}
+              className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-sm bg-primary px-2 py-2 text-primary-foreground disabled:opacity-50 lg:flex-row lg:gap-2"
             >
               {cameraPending ? (
                 <LoaderCircle className="h-5 w-5 animate-spin" />
@@ -259,38 +320,34 @@ export function ScanScreen() {
                 <Camera className="h-5 w-5" />
               )}
               <span className="text-xs font-bold">
-                {cameraPending
-                  ? "Opening..."
-                  : cameraActive
-                    ? "Take photo"
-                    : "Camera"}
+                {cameraPending ? "Opening..." : "Camera"}
               </span>
             </button>
             <button
               onClick={() => imageInput.current?.click()}
-              disabled={busy}
-              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-sm border border-border bg-card px-2 py-3 disabled:opacity-50 lg:flex-row"
+              disabled={busy || capturing}
+              className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-sm border border-border bg-card px-2 py-2 disabled:opacity-50 lg:flex-row lg:gap-2"
             >
               <Images className="h-5 w-5" />
               <span className="text-xs font-bold">Image</span>
             </button>
             <button
               onClick={() => documentInput.current?.click()}
-              disabled={busy}
-              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-sm border border-border bg-card px-2 py-3 disabled:opacity-50 lg:flex-row"
+              disabled={busy || capturing}
+              className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-sm border border-border bg-card px-2 py-2 disabled:opacity-50 lg:flex-row lg:gap-2"
             >
               <FileUp className="h-5 w-5" />
               <span className="text-xs font-bold">Document</span>
             </button>
           </div>
           <button
-            disabled={busy}
+            disabled={busy || capturing}
             onClick={() => documentInput.current?.click()}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
               event.preventDefault();
               const file = event.dataTransfer.files[0];
-              if (file && !busy) void handleFile(file);
+              if (file && !busy && !capturing) void handleFile(file);
             }}
             className="hidden min-h-28 w-full flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border p-4 text-sm text-muted-foreground lg:flex"
           >
@@ -302,9 +359,10 @@ export function ScanScreen() {
           </p>
           {busy ? (
             <div
+              ref={progressMessage}
               role="status"
               aria-live="polite"
-              className="flex items-center gap-3 border-y border-border py-4 text-sm font-semibold"
+              className="scroll-mb-32 flex items-center gap-3 border-y border-border py-4 text-sm font-semibold"
             >
               <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-primary" />
               {progress}
@@ -312,8 +370,9 @@ export function ScanScreen() {
           ) : null}
           {error ? (
             <p
+              ref={errorMessage}
               role="alert"
-              className="rounded-sm border border-destructive/40 p-3 text-sm text-destructive"
+              className="scroll-mb-32 rounded-sm border border-destructive/40 p-3 text-sm text-destructive"
             >
               {error}
             </p>

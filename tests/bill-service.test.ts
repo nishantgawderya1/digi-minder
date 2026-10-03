@@ -30,6 +30,7 @@ const dependencies = vi.hoisted(() => ({
   finalizeUpload: vi.fn(),
   answerFromBills: vi.fn(),
   sendEvent: vi.fn(),
+  backgroundConfigured: vi.fn(),
   readStoredOriginal: vi.fn(),
   prepareServerPage: vi.fn(),
   clerkGetUser: vi.fn(),
@@ -48,7 +49,7 @@ vi.mock("resend", () => ({
   },
 }));
 vi.mock("@/lib/inngest.server", () => ({
-  backgroundConfigured: () => true,
+  backgroundConfigured: dependencies.backgroundConfigured,
   inngest: { send: dependencies.sendEvent },
 }));
 vi.mock("@/lib/document-render.server", () => ({
@@ -160,6 +161,7 @@ beforeEach(async () => {
   );
   dependencies.finalizeUpload.mockResolvedValue(undefined);
   dependencies.sendEvent.mockResolvedValue({ ids: [] });
+  dependencies.backgroundConfigured.mockReturnValue(true);
   dependencies.readStoredOriginal.mockResolvedValue(new Uint8Array([1]));
   dependencies.prepareServerPage.mockResolvedValue({
     text: "Product name: Background lamp\nInvoice number: 000045\nTotal: INR 170.00",
@@ -540,6 +542,23 @@ describe("Assistant account isolation and quotas", () => {
     itemId: null,
     messages: [{ role: "user" as const, content: "What did I buy?" }],
   };
+  it("allows the existing OCR key through the authenticated assistant configuration check", async () => {
+    vi.stubEnv("NVIDIA_LLM_API_KEY", "");
+    vi.stubEnv("NVIDIA_API_KEY", "");
+    vi.stubEnv("NVIDIA_NEMOTRON_OCR_API_KEY", "shared-test-key");
+    await db
+      .insert(schema.items)
+      .values({ id, userId: userA, name: "My bill" });
+    expect((await askAssistant(request)).ok).toBe(true);
+    expect(dependencies.answerFromBills).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        await pg.query("SELECT assistant_count FROM app_users WHERE id=$1", [
+          userA,
+        ])
+      ).rows[0],
+    ).toEqual({ assistant_count: 1 });
+  });
   it("sends only the authenticated user's saved bills to the model", async () => {
     await db.insert(schema.items).values([
       { id, userId: userA, name: "My bill" },
@@ -604,6 +623,21 @@ describe("Assistant account isolation and quotas", () => {
 });
 
 describe("Background processing and autosaved review", () => {
+  it("reports browser processing availability when hosted job credentials are missing", async () => {
+    dependencies.backgroundConfigured.mockReturnValue(false);
+    await pg.query("UPDATE documents SET ocr_status='pending' WHERE id=$1", [
+      id,
+    ]);
+    expect(await service.completeUpload(id)).toEqual({
+      ok: true,
+      data: { id, backgroundAvailable: false },
+    });
+    expect(await service.completeUpload(id)).toEqual({
+      ok: true,
+      data: { id, backgroundAvailable: false },
+    });
+    expect(dependencies.sendEvent).not.toHaveBeenCalled();
+  });
   it("recovers a stale run with a new generation and stops after bounded recovery", async () => {
     await db.insert(schema.documentJobs).values({
       documentId: id,

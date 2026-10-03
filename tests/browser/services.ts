@@ -106,8 +106,10 @@ export const completeUpload = async () => {
   current.draft!.status = "processing";
   current.draft!.job = { status: "queued", completedPages: 0, error: null };
   persist(current);
-  setTimeout(() => void runWorker(), 50);
-  return ok({ id });
+  const backgroundAvailable =
+    sessionStorage.getItem("background-disabled") !== "true";
+  if (backgroundAvailable) setTimeout(() => void runWorker(), 50);
+  return ok({ id, backgroundAvailable });
 };
 async function runWorker() {
   while (sessionStorage.getItem("worker-paused") === "true")

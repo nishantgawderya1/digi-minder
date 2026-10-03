@@ -13,18 +13,24 @@ const tabs = [
 export function PhoneShell({
   children,
   showTabs = true,
+  showMobileTabs = true,
 }: {
   children: ReactNode;
   showTabs?: boolean;
+  showMobileTabs?: boolean;
 }) {
   return (
     <div className="min-h-screen bg-secondary">
       <div className="mx-auto grid min-h-screen w-full max-w-[1280px] bg-background lg:grid-cols-[260px_minmax(0,1fr)] lg:border-x lg:border-border">
         {showTabs ? <DesktopRail /> : null}
         <div className="mx-auto flex min-h-screen w-full max-w-[760px] flex-col border-x border-border bg-background lg:max-w-none lg:border-x-0">
-          <div className="min-w-0 flex-1 pb-28 lg:pb-8">{children}</div>
+          <div
+            className={`min-w-0 flex-1 ${showMobileTabs ? "pb-[calc(7rem+env(safe-area-inset-bottom))]" : "pb-[calc(8rem+env(safe-area-inset-bottom))]"} lg:pb-8`}
+          >
+            {children}
+          </div>
         </div>
-        {showTabs ? <TabBar /> : null}
+        {showTabs && showMobileTabs ? <TabBar /> : null}
       </div>
     </div>
   );
@@ -121,7 +127,7 @@ function TabLink({
       to={to}
       activeProps={{ className: "text-primary" }}
       inactiveProps={{ className: "text-muted-foreground" }}
-      className="flex min-w-0 flex-col items-center gap-1 rounded-sm py-1 text-[10px] font-semibold uppercase tracking-normal"
+      className="flex min-w-0 flex-col items-center gap-1 rounded-sm py-1 text-[11px] font-semibold tracking-normal"
     >
       <Icon className="h-5 w-5" strokeWidth={2.2} />
       {label}

@@ -1,6 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { UserButton, useUser } from "@clerk/tanstack-react-start";
-import { ArrowRight, Bell, CalendarDays, Plus } from "lucide-react";
+import {
+  ArrowRight,
+  Bell,
+  Bot,
+  CalendarDays,
+  Plus,
+  ScanLine,
+} from "lucide-react";
 import { format } from "date-fns";
 import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
 import { BillCard } from "@/components/bill-card";
@@ -47,6 +54,22 @@ function HomeScreen() {
         }
       />
       <div className="space-y-8 p-5 lg:p-8">
+        <section aria-label="Quick actions" className="grid grid-cols-2 gap-3">
+          <Link
+            to="/scan"
+            className="flex min-h-24 min-w-0 items-center gap-3 rounded-sm border border-primary bg-primary px-4 py-4 font-bold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <ScanLine className="h-6 w-6 shrink-0" />
+            <span className="break-words text-sm">Scan a bill</span>
+          </Link>
+          <Link
+            to="/agent"
+            className="flex min-h-24 min-w-0 items-center gap-3 rounded-sm border border-border bg-card px-4 py-4 font-bold transition hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <Bot className="h-6 w-6 shrink-0 text-primary" />
+            <span className="break-words text-sm">Ask assistant</span>
+          </Link>
+        </section>
         <section
           className="grid grid-cols-2 gap-x-5 gap-y-6 border-b border-border pb-6 xl:grid-cols-4"
           aria-label="Vault totals"
