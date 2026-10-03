@@ -1,4 +1,5 @@
 import { acceptedFileTypes, MAX_FILE_BYTES, MAX_PAGES } from "./bills";
+import { encodeOcrImage, ocrImageSize, pdfOcrScale } from "./ocr-image";
 import {
   beginUpload,
   completeUpload,
@@ -15,16 +16,6 @@ export type PreparedDocument = {
   readText?: (index: number) => Promise<string | null>;
   dispose: () => void;
 };
-
-function pageImage(canvas: HTMLCanvasElement) {
-  for (const quality of [0.9, 0.75, 0.6]) {
-    const data = canvas.toDataURL("image/jpeg", quality);
-    if (data.length <= 2_400_000) return data;
-  }
-  throw new Error(
-    "This page is too large to read. Try a smaller or more tightly cropped image.",
-  );
-}
 
 export async function prepareDocument(source: File): Promise<PreparedDocument> {
   const inferredType =
@@ -87,17 +78,14 @@ export async function prepareDocument(source: File): Promise<PreparedDocument> {
         const page = await pdf.getPage(index + 1);
         const original = page.getViewport({ scale: 1 });
         const viewport = page.getViewport({
-          scale: Math.min(
-            2.5,
-            2200 / Math.max(original.width, original.height),
-          ),
+          scale: pdfOcrScale(original.width, original.height),
         });
         const canvas = document.createElement("canvas");
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
         try {
           await page.render({ canvas, viewport, background: "white" }).promise;
-          return pageImage(canvas);
+          return encodeOcrImage(canvas);
         } finally {
           canvas.width = 0;
           canvas.height = 0;
@@ -126,10 +114,10 @@ export async function prepareDocument(source: File): Promise<PreparedDocument> {
     pageCount: 1,
     dispose: () => URL.revokeObjectURL(url),
     renderPage: async () => {
-      const scale = Math.min(1, 2200 / Math.max(image.width, image.height));
+      const size = ocrImageSize(image.width, image.height);
       const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(image.width * scale));
-      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.width = size.width;
+      canvas.height = size.height;
       const context = canvas.getContext("2d");
       if (!context)
         throw new Error("Image processing is unavailable in this browser.");
@@ -137,7 +125,7 @@ export async function prepareDocument(source: File): Promise<PreparedDocument> {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
       try {
-        return pageImage(canvas);
+        return encodeOcrImage(canvas);
       } finally {
         canvas.width = 0;
         canvas.height = 0;

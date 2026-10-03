@@ -2,27 +2,26 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { MAX_PAGES } from "./bills";
+import { encodeOcrImage, ocrImageSize, pdfOcrScale } from "./ocr-image";
 
 export async function prepareServerPage(
   bytes: Uint8Array,
   contentType: string,
   index: number,
+  options: { forceRaster?: boolean } = {},
 ) {
   if (contentType !== "application/pdf") {
     if (index !== 0) throw new Error("Invalid image page.");
     const image = await loadImage(Buffer.from(bytes));
     if (image.width * image.height > 60_000_000)
       throw new Error("Image exceeds the pixel limit.");
-    const scale = Math.min(1, 2200 / Math.max(image.width, image.height));
-    const canvas = createCanvas(
-      Math.max(1, Math.round(image.width * scale)),
-      Math.max(1, Math.round(image.height * scale)),
-    );
+    const size = ocrImageSize(image.width, image.height);
+    const canvas = createCanvas(size.width, size.height);
     const context = canvas.getContext("2d");
     context.fillStyle = "white";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return { text: null, imageDataUrl: canvas.toDataURL("image/jpeg", 0.85) };
+    return { text: null, imageDataUrl: encodeOcrImage(canvas) };
   }
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const root = join(
@@ -51,11 +50,16 @@ export async function prepareServerPage(
       )
       .join("")
       .trim();
-    if (text.length >= 100 && /\p{L}/u.test(text) && !text.includes("\uFFFD"))
+    if (
+      !options.forceRaster &&
+      text.length >= 100 &&
+      /\p{L}/u.test(text) &&
+      !text.includes("\uFFFD")
+    )
       return { text: text.slice(0, 100_000), imageDataUrl: null };
     const original = page.getViewport({ scale: 1 });
     const viewport = page.getViewport({
-      scale: Math.min(2.5, 2200 / Math.max(original.width, original.height)),
+      scale: pdfOcrScale(original.width, original.height),
     });
     const canvas = createCanvas(
       Math.ceil(viewport.width),
@@ -69,7 +73,7 @@ export async function prepareServerPage(
       viewport,
       background: "white",
     }).promise;
-    return { text: null, imageDataUrl: canvas.toDataURL("image/jpeg", 0.85) };
+    return { text: null, imageDataUrl: encodeOcrImage(canvas) };
   } finally {
     await task.destroy();
   }
