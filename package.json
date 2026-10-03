@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e": "playwright test",
+    "eval:extraction": "node scripts/evaluate-extraction.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "db:backup": "node scripts/backup-database.mjs",

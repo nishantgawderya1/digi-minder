@@ -176,7 +176,7 @@ export const readDocumentPage = async ({
     sessionStorage.getItem("ocr-unavailable") === "true"
   )
     return { ok: false as const, error: "Reader unavailable" };
-  if (!data.imageDataUrl.startsWith("data:image/jpeg;base64,"))
+  if (!/^data:image\/(?:jpeg|png);base64,/.test(data.imageDataUrl))
     throw new Error("Not a rasterized page");
   const current = state();
   current.draft!.pages.push({

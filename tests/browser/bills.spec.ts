@@ -75,29 +75,54 @@ async function unobscured(page: Page, name: string) {
     }),
   ).toBe(true);
 }
-test("Today restores its two quick actions above the totals", async ({
+test("Today has one compact bill action and keeps Assistant in navigation", async ({
   page,
 }) => {
   if (test.info().project.name === "mobile")
     await page.setViewportSize({ width: 320, height: 568 });
   await page.goto("/home");
-  const actions = page.getByRole("region", { name: "Quick actions" });
+  const actions = page.getByRole("region", { name: "Bill actions" });
   await expect(
-    actions.getByRole("link", { name: "Scan a bill", exact: true }),
+    actions.getByRole("link", { name: "Add a bill", exact: true }),
   ).toBeInViewport();
   await expect(
-    actions.getByRole("link", { name: "Ask assistant", exact: true }),
-  ).toBeInViewport();
+    page.getByRole("link", { name: "Ask assistant", exact: true }),
+  ).toHaveCount(0);
+  expect((await actions.boundingBox())!.height).toBeLessThanOrEqual(48);
   await noOverflow(page);
   await page.screenshot({
     path: test.info().outputPath("today-actions.png"),
     fullPage: true,
   });
-  await actions.getByRole("link", { name: "Scan a bill", exact: true }).click();
+  await actions.getByRole("link", { name: "Add a bill", exact: true }).click();
   await expect(page).toHaveURL(/\/scan$/);
   await page.getByRole("link", { name: "Back to Today" }).click();
-  await page.getByRole("link", { name: "Ask assistant", exact: true }).click();
+  await page
+    .getByRole("link", { name: "Assistant", exact: true })
+    .filter({ visible: true })
+    .click();
   await expect(page).toHaveURL(/\/agent$/);
+});
+test("Today resumes an unfinished bill directly from its progress list", async ({
+  page,
+}) => {
+  if (test.info().project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/scan");
+  await upload(page);
+  await page.goto("/home");
+  const queue = page.getByRole("region", { name: "Bills in progress" });
+  await expect(queue.getByText("Ready to review")).toBeVisible();
+  await expect(queue.getByRole("link", { name: /bill.png/ })).toBeInViewport();
+  await noOverflow(page);
+  await page.screenshot({
+    path: test.info().outputPath("home-progress.png"),
+    fullPage: true,
+  });
+  await queue.getByRole("link", { name: /bill.png/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Check the details" }),
+  ).toBeVisible();
 });
 test("upload controls remain reachable while short mobile pages scroll", async ({
   page,
@@ -128,6 +153,53 @@ test("upload controls remain reachable while short mobile pages scroll", async (
     fullPage: true,
   });
 });
+test("review highlights a missing product name and clears the hint after correction", async ({
+  page,
+}) => {
+  await page.goto("/scan");
+  await upload(page);
+  await page.evaluate(() => {
+    const state = JSON.parse(sessionStorage.getItem("test-vault")!);
+    state.draft.fields.name = "";
+    sessionStorage.setItem("test-vault", JSON.stringify(state));
+  });
+  await page.reload();
+  const name = page.getByLabel("Bill / item name");
+  await expect(name).toHaveValue("");
+  await expect(name).toHaveAccessibleDescription(
+    "Item name not found in the extracted details.",
+  );
+  await name.fill("Corrected reading lamp");
+  await expect(
+    page.getByText("Item name not found in the extracted details."),
+  ).toHaveCount(0);
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(name).toHaveValue("Corrected reading lamp");
+});
+test("review explains a rejected name and keeps the correction after reload", async ({
+  page,
+}) => {
+  await page.goto("/scan");
+  await upload(page);
+  await page.evaluate(() => {
+    const state = JSON.parse(sessionStorage.getItem("test-vault")!);
+    state.draft.fields.name = "";
+    state.draft.nameIssue = "rejected";
+    sessionStorage.setItem("test-vault", JSON.stringify(state));
+  });
+  await page.reload();
+  const name = page.getByLabel("Bill / item name");
+  await expect(name).toHaveAccessibleDescription(
+    "The suggested name could not be verified against the source. Enter the item name from the original.",
+  );
+  await name.fill("Acme phone cover");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(name).toHaveValue("Acme phone cover");
+  await expect(name).not.toHaveAttribute("aria-describedby");
+});
+
 test("uploads automatically read and fill review when hosted jobs are disabled", async ({
   page,
 }) => {
