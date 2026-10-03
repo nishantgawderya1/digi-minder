@@ -169,6 +169,8 @@ describe("NVIDIA LLM boundary", () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     vi.stubEnv("NVIDIA_LLM_API_KEY", "");
+    vi.stubEnv("NVIDIA_API_KEY", "");
+    vi.stubEnv("NVIDIA_NEMOTRON_OCR_API_KEY", "");
     expect((await extractBillWithAi(text)).method).toBe("labels");
     vi.stubEnv("NVIDIA_LLM_API_KEY", "test-key");
     expect((await extractBillWithAi("")).warning).toContain("No readable text");
@@ -176,6 +178,30 @@ describe("NVIDIA LLM boundary", () => {
       "too much text",
     );
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("automatically maps fields using the existing OCR key without a separate LLM key", async () => {
+    vi.stubEnv("NVIDIA_LLM_API_KEY", "");
+    vi.stubEnv("NVIDIA_API_KEY", "");
+    vi.stubEnv("NVIDIA_NEMOTRON_OCR_API_KEY", "shared-test-key");
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: JSON.stringify(candidate()) },
+            },
+          ],
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const result = await extractBillWithAi(text);
+    expect(result.method).toBe("nvidia-llm");
+    expect(result.fields.serialNumber).toBe("001234567890");
+    expect(fetch.mock.calls[0]![1].headers.Authorization).toBe(
+      "Bearer shared-test-key",
+    );
   });
   it.each([401, 429, 500])(
     "preserves label-derived fields when NVIDIA returns %s",

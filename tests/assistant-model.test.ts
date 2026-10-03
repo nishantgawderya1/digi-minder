@@ -81,10 +81,22 @@ describe("Grounded assistant model", () => {
   it("blocks calls when no key is configured", async () => {
     const fetch = mockResponse();
     vi.stubEnv("NVIDIA_LLM_API_KEY", "");
+    vi.stubEnv("NVIDIA_API_KEY", "");
+    vi.stubEnv("NVIDIA_NEMOTRON_OCR_API_KEY", "");
     await expect(answerFromBills([bill], question)).rejects.toThrow(
       "not configured",
     );
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("answers with the existing NVIDIA OCR key when the dedicated LLM key is absent", async () => {
+    const fetch = mockResponse();
+    vi.stubEnv("NVIDIA_LLM_API_KEY", "");
+    vi.stubEnv("NVIDIA_API_KEY", "");
+    vi.stubEnv("NVIDIA_NEMOTRON_OCR_API_KEY", "shared-test-key");
+    expect((await answerFromBills([bill], question)).sources).toHaveLength(1);
+    expect(fetch.mock.calls[0]![1].headers.Authorization).toBe(
+      "Bearer shared-test-key",
+    );
   });
   it("requires bounded user questions, never client-supplied system messages", () => {
     expect(

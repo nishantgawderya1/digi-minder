@@ -24,7 +24,7 @@
 
 ## Next validation
 
-1. Configure both NVIDIA keys, Inngest event/signing keys and Resend verified-domain credentials in the correct Vercel environment; redeploy and sync `/api/inngest` with Inngest. Keep `INNGEST_DEV` disabled in production.
+1. Configure NVIDIA credentials in the correct Vercel environment; the existing OCR key also supports extraction/chat at the default NVIDIA endpoint. Redeploy after changes. Add Inngest event/signing keys and sync `/api/inngest` for durable jobs; keep `INNGEST_DEV` disabled in production. Without hosted jobs, uploads automatically read in the browser. Add Resend verified-domain credentials before enabling email delivery.
 2. Test photos and multi-page PDFs from representative real bills. Review missing fields and extraction accuracy; never silently fill gaps.
 3. Run an authenticated two-account smoke test against the deployed environment, including upload, review, save, reload, signed download, edit and delete.
 4. Verify camera capture in mobile Safari on HTTPS and confirm storage CORS for all deployed origins.

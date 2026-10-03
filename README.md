@@ -6,7 +6,7 @@ Private bills, purchase documents and warranty dates. TanStack Start + React, Cl
 
 1. Sign in, then capture a photo or choose a JPEG, PNG, WebP or PDF (15 MB, up to 10 pages).
 2. Upload the original directly to private storage using a short-lived signed URL. The server validates the stored size, media type and signature, then copies it to a separate private original key.
-3. After the original upload is validated, a database outbox dispatches an Inngest background job. The browser opens review immediately and polls progress; it can close without stopping OCR. Each page is a durable step. The server preserves digital PDF text and renders scans/images with PDF.js and native canvas. NVIDIA failures recover with bounded English Tesseract OCR on the server. A manual device-local reading option remains available for failed jobs. The recovery scheduler retries missing dispatches and stale runs; completed pages are reused.
+3. After the original upload is validated, a database outbox dispatches an Inngest background job. The browser opens review immediately and polls progress; it can close without stopping OCR. Each page is a durable step. The server preserves digital PDF text and renders scans/images with PDF.js and native canvas. NVIDIA failures recover with bounded English Tesseract OCR on the server. If hosted jobs are not configured, the upload screen automatically reads pages in the browser and calls server-side field extraction; keep that screen open until review appears. A manual device-local reading option remains available for failed jobs. The recovery scheduler retries missing dispatches and stale runs; completed pages are reused.
 4. The server sends OCR text to `nvidia/nemotron-3.5-lightning-30b-a3b` for JSON field extraction. Suggestions need matching source quotes and pass schema validation. Numeric dates are parsed day-first from the quote; serial/barcode identifiers retain leading zeroes. Neither NVIDIA key reaches the browser.
 5. Review the original, raw text, field source quotes and page numbers. Calculated dates and user corrections are identified separately. Corrections autosave as patches in separate columns, with optimistic revisions and serialized writes; OCR completion/retries cannot replace them. Navigation flushes pending writes and blocked saves retain edits. Confirm the details, then save to the vault.
 6. Saved bills populate Today, Vault, search/filter results and item details. You can edit, download the original, or delete a bill. No sample records are inserted or displayed.
@@ -29,26 +29,27 @@ npm run dev:jobs
 
 Only `VITE_CLERK_PUBLISHABLE_KEY` is browser-visible. Never prefix a secret with `VITE_`. Never commit `.env` or real credentials in `.env.example`.
 
-| Variable                                     | Purpose                                                                   |
-| -------------------------------------------- | ------------------------------------------------------------------------- |
-| `VITE_CLERK_PUBLISHABLE_KEY`                 | Clerk public application key, needed at build time                        |
-| `CLERK_SECRET_KEY`                           | Server session verification                                               |
-| `APP_BASE_URL`                               | Exact deployed origin, or local URL                                       |
-| `DATABASE_URL`                               | Neon Postgres connection used by the HTTP driver and migrations           |
-| `AWS_ENDPOINT_URL_S3`                        | S3-compatible storage endpoint, including Neon storage                    |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Server-only storage credentials                                           |
-| `AWS_REGION`, `S3_BUCKET`                    | Private storage region and bucket                                         |
-| `NVIDIA_NEMOTRON_OCR_API_KEY`                | Server-only NVIDIA OCR key                                                |
-| `NVIDIA_NEMOTRON_OCR_URL`                    | Optional endpoint override; defaults to hosted Nemotron OCR v1            |
-| `NVIDIA_LLM_API_KEY`                         | Server-only NVIDIA key for structured field extraction and assistant chat |
-| `NVIDIA_LLM_BASE_URL`                        | Defaults to `https://integrate.api.nvidia.com/v1`                         |
-| `NVIDIA_LLM_MODEL`                           | Defaults to `nvidia/nemotron-3.5-lightning-30b-a3b`                       |
-| `INNGEST_DEV`                                | `1` for local jobs, `0` or unset in production                            |
-| `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`   | Hosted event dispatch and signed worker requests                          |
-| `RESEND_API_KEY`                             | Reminder email provider key                                               |
-| `REMINDER_FROM_EMAIL`                        | Sender address on a verified Resend domain                                |
+| Variable                                     | Purpose                                                                                                              |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `VITE_CLERK_PUBLISHABLE_KEY`                 | Clerk public application key, needed at build time                                                                   |
+| `CLERK_SECRET_KEY`                           | Server session verification                                                                                          |
+| `APP_BASE_URL`                               | Exact deployed origin, or local URL                                                                                  |
+| `DATABASE_URL`                               | Neon Postgres connection used by the HTTP driver and migrations                                                      |
+| `AWS_ENDPOINT_URL_S3`                        | S3-compatible storage endpoint, including Neon storage                                                               |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Server-only storage credentials                                                                                      |
+| `AWS_REGION`, `S3_BUCKET`                    | Private storage region and bucket                                                                                    |
+| `NVIDIA_NEMOTRON_OCR_API_KEY`                | Server-only NVIDIA OCR key                                                                                           |
+| `NVIDIA_NEMOTRON_OCR_URL`                    | Optional endpoint override; defaults to hosted Nemotron OCR v1                                                       |
+| `NVIDIA_LLM_API_KEY`                         | Optional dedicated server-only key for extraction and assistant chat; takes precedence                               |
+| `NVIDIA_API_KEY`                             | Optional shared NVIDIA key; on the default NVIDIA endpoint, falls back to the existing `NVIDIA_NEMOTRON_OCR_API_KEY` |
+| `NVIDIA_LLM_BASE_URL`                        | Defaults to `https://integrate.api.nvidia.com/v1`                                                                    |
+| `NVIDIA_LLM_MODEL`                           | Defaults to `nvidia/nemotron-3.5-lightning-30b-a3b`                                                                  |
+| `INNGEST_DEV`                                | `1` for local jobs, `0` or unset in production                                                                       |
+| `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`   | Hosted event dispatch and signed worker requests                                                                     |
+| `RESEND_API_KEY`                             | Reminder email provider key                                                                                          |
+| `REMINDER_FROM_EMAIL`                        | Sender address on a verified Resend domain                                                                           |
 
-`DATABASE_URL_POOLED`, `CLERK_WEBHOOK_SIGNING_SECRET` and `NEON_AI_GATEWAY_*` are reserved and are not used by this workflow. Local `.env` values do not populate Vercel: set both NVIDIA keys there separately and redeploy. Real bills used for debugging belong in the ignored `sample folder`, never `public` or committed test fixtures.
+`DATABASE_URL_POOLED`, `CLERK_WEBHOOK_SIGNING_SECRET` and `NEON_AI_GATEWAY_*` are reserved and are not used by this workflow. Local `.env` values do not populate Vercel: set the NVIDIA key in the correct Production/Preview environment and redeploy. The existing OCR key can also authenticate extraction/chat at the default NVIDIA LLM endpoint. Custom LLM endpoints require an explicit `NVIDIA_LLM_API_KEY`; shared/fallback keys are never forwarded there. Real bills used for debugging belong in the ignored `sample folder`, never `public` or committed test fixtures.
 
 ## Database and security
 
