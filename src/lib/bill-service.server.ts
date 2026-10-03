@@ -31,7 +31,6 @@ import {
 import { serviceResult, ServiceError } from "./service-error.server";
 import { autosaveSchema, draftPatchSchema, evidenceWithPages } from "./review";
 import { backgroundConfigured } from "./inngest.server";
-import { nvidiaLlmConfig } from "./nvidia-config.server";
 
 async function ownedDocument(userId: string, id: string) {
   const [document] = await getDatabase()
@@ -136,6 +135,15 @@ export async function loadReview(id: string) {
       document.extractedData?.["fields"],
     );
     const draft = draftPatchSchema.safeParse(document.draftFields);
+    const nameIssue = z
+      .object({
+        fieldIssues: z.object({
+          name: z
+            .enum(["missing", "absent", "ambiguous", "unreadable", "rejected"])
+            .optional(),
+        }),
+      })
+      .safeParse(document.extractedData?.["extractionDiagnostics"]);
     const [job] = await getDatabase()
       .select()
       .from(documentJobs)
@@ -160,6 +168,9 @@ export async function loadReview(id: string) {
           document.extractedData?.["extraction"] as
             { method?: string } | undefined
         )?.method ?? null,
+      nameIssue: nameIssue.success
+        ? (nameIssue.data.fieldIssues.name ?? null)
+        : null,
       pageCount: document.pageCount,
       pages,
       job: job
@@ -537,7 +548,7 @@ export async function finishReadingForOwner(userId: string, id: string) {
       .set({
         extractedData: sql`coalesce(${documents.extractedData}, '{}'::jsonb) || jsonb_build_object('extraction', jsonb_build_object(
         'version', ${EXTRACTION_VERSION}::int, 'status', 'processing', 'requestId', ${requestId}::text,
-        'attempts', coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) + ${nvidiaLlmConfig().key ? 1 : 0}::int))`,
+        'attempts', coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0)))`,
         updatedAt: new Date(),
       })
       .where(
@@ -545,7 +556,7 @@ export async function finishReadingForOwner(userId: string, id: string) {
           scope,
           sql`coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) < 3`,
           sql`(coalesce(${documents.extractedData}->'extraction'->>'status', '') <> 'processing' OR ${documents.updatedAt} < now() - interval '2 minutes')`,
-          sql`coalesce(${documents.extractedData}->'extraction'->>'method', '') <> 'nvidia-llm'`,
+          sql`(coalesce(${documents.extractedData}->'extraction'->>'method', '') <> 'nvidia-llm' OR coalesce((${documents.extractedData}->'extraction'->>'version')::int, 0) <> ${EXTRACTION_VERSION})`,
         ),
       )
       .returning({ extractedData: documents.extractedData });
@@ -553,7 +564,31 @@ export async function finishReadingForOwner(userId: string, id: string) {
       throw new ServiceError(
         "Bill details are already being extracted or have reached their retry limit. Please refresh the review.",
       );
-    const result = await extractBillWithAi(rawText);
+    const result = await extractBillWithAi(rawText, {
+      pages: pages.map((page) => ({
+        page: page.pageIndex + 1,
+        text: page.text ?? "",
+      })),
+      skipNameRepair: Object.hasOwn(document.draftFields ?? {}, "name"),
+      beforeRequest: async () => {
+        // Count each primary/repair request before sending it, including provider failures.
+        const [usage] = await getDatabase()
+          .update(documents)
+          .set({
+            extractedData: sql`jsonb_set(${documents.extractedData}, '{extraction,attempts}', to_jsonb(coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) + 1))`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              scope,
+              sql`${documents.extractedData}->'extraction'->>'requestId' = ${requestId}`,
+              sql`coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) < 3`,
+            ),
+          )
+          .returning({ id: documents.id });
+        return !!usage;
+      },
+    });
     await getDatabase()
       .update(documents)
       .set({
@@ -561,20 +596,11 @@ export async function finishReadingForOwner(userId: string, id: string) {
         ocrError: result.warning,
         extractedData: sql`coalesce(${documents.extractedData}, '{}'::jsonb) || ${JSON.stringify(
           {
-            ...claimed.extractedData,
             fields: result.fields,
             evidence: result.evidence,
-            extraction: {
-              ...(claimed.extractedData?.["extraction"] as Record<
-                string,
-                unknown
-              >),
-              status: "complete",
-              method: result.method,
-              model: result.model,
-            },
+            extractionDiagnostics: result.diagnostics,
           },
-        )}::jsonb`,
+        )}::jsonb || jsonb_build_object('extraction', coalesce(${documents.extractedData}->'extraction', '{}'::jsonb) || ${JSON.stringify({ status: "complete", method: result.method, model: result.model })}::jsonb)`,
         updatedAt: new Date(),
       })
       .where(

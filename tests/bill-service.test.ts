@@ -17,6 +17,7 @@ import type { NeonQueryFunction } from "@neondatabase/serverless";
 import * as schema from "@/db/schema";
 import { emptyBillFields } from "@/lib/bills";
 import { extractBillFields } from "@/lib/ocr";
+import type { ExtractionOptions } from "@/lib/bill-extraction.server";
 import { ServiceError } from "@/lib/service-error.server";
 
 const dependencies = vi.hoisted(() => ({
@@ -61,7 +62,7 @@ vi.mock("@/lib/assistant-model.server", () => ({
 }));
 vi.mock("@/lib/bill-extraction.server", () => ({
   extractBillWithAi: dependencies.extractBillWithAi,
-  EXTRACTION_VERSION: 1,
+  EXTRACTION_VERSION: 2,
 }));
 vi.mock("@/lib/storage.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/storage.server")>()),
@@ -190,13 +191,18 @@ beforeEach(async () => {
   });
   vi.stubEnv("NVIDIA_NEMOTRON_OCR_API_KEY", "test-key-not-real");
   vi.stubEnv("NVIDIA_LLM_API_KEY", "test-key-not-real");
-  dependencies.extractBillWithAi.mockImplementation(async (text: string) => ({
-    fields: extractBillFields(text),
-    evidence: {},
-    method: "nvidia-llm",
-    model: "test-model",
-    warning: null,
-  }));
+  dependencies.extractBillWithAi.mockImplementation(
+    async (text: string, options: ExtractionOptions) => {
+      await options.beforeRequest?.();
+      return {
+        fields: extractBillFields(text),
+        evidence: {},
+        method: "nvidia-llm",
+        model: "test-model",
+        warning: null,
+      };
+    },
+  );
   await db.insert(schema.appUsers).values([{ id: userA }, { id: userB }]);
   id = randomUUID();
   await db.insert(schema.documents).values({
@@ -521,19 +527,141 @@ describe("Private document lifecycle", () => {
       pageIndex: 0,
       imageDataUrl: "data:image/png;base64,iVBORw0KGgo=",
     });
-    dependencies.extractBillWithAi.mockResolvedValue({
-      fields: emptyBillFields(),
-      evidence: {},
-      method: "labels",
-      model: null,
-      warning: "AI temporarily unavailable",
-    });
+    dependencies.extractBillWithAi.mockImplementation(
+      async (_text: string, options: ExtractionOptions) => {
+        await options.beforeRequest?.();
+        return {
+          fields: emptyBillFields(),
+          evidence: {},
+          method: "labels",
+          model: null,
+          warning: "AI temporarily unavailable",
+        };
+      },
+    );
     for (let i = 0; i < 3; i++)
       expect((await service.finishReading(id)).ok).toBe(true);
     expect((await service.finishReading(id)).ok).toBe(false);
     expect(dependencies.extractBillWithAi).toHaveBeenCalledTimes(3);
     const review = await service.loadReview(id);
     expect(review.ok && review.data.pages[0]?.text).toContain("Reading lamp");
+  });
+  it("charges repair calls atomically and retains the counters after completing extraction", async () => {
+    await service.readDocumentPage({
+      id,
+      pageIndex: 0,
+      imageDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    });
+    dependencies.extractBillWithAi.mockImplementation(
+      async (_text: string, options: ExtractionOptions) => {
+        expect(await options.beforeRequest?.()).toBe(true);
+        expect(await options.beforeRequest?.()).toBe(true);
+        return {
+          fields: { ...emptyBillFields(), name: "Repaired name" },
+          evidence: {},
+          method: "nvidia-llm",
+          model: "test-model",
+          warning: null,
+          diagnostics: {
+            repairedName: true,
+            fieldIssues: { name: "rejected" },
+          },
+        };
+      },
+    );
+    expect((await service.finishReading(id)).ok).toBe(true);
+    const [document] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, id));
+    expect(document?.extractedData?.["extraction"]).toMatchObject({
+      version: 2,
+      attempts: 2,
+      status: "complete",
+    });
+    expect(document?.extractedData?.["extractionDiagnostics"]).toMatchObject({
+      repairedName: true,
+    });
+    const review = await service.loadReview(id);
+    expect(review.ok && review.data.nameIssue).toBe("rejected");
+  });
+  it("denies a repair when the primary request spent the last budget slot", async () => {
+    await service.readDocumentPage({
+      id,
+      pageIndex: 0,
+      imageDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    });
+    await db
+      .update(schema.documents)
+      .set({
+        extractedData: {
+          extraction: {
+            version: 2,
+            attempts: 2,
+            status: "complete",
+            method: "labels",
+          },
+        },
+      })
+      .where(eq(schema.documents.id, id));
+    dependencies.extractBillWithAi.mockImplementation(
+      async (_text: string, options: ExtractionOptions) => {
+        expect(await options.beforeRequest?.()).toBe(true);
+        expect(await options.beforeRequest?.()).toBe(false);
+        return {
+          fields: emptyBillFields(),
+          evidence: {},
+          method: "labels",
+          model: null,
+          warning: null,
+        };
+      },
+    );
+    expect((await service.finishReading(id)).ok).toBe(true);
+    expect((await service.finishReading(id)).ok).toBe(false);
+    const [document] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, id));
+    expect(document?.extractedData?.["extraction"]).toMatchObject({
+      attempts: 3,
+    });
+  });
+  it("upgrades a previous extraction version without replacing corrected fields", async () => {
+    await service.readDocumentPage({
+      id,
+      pageIndex: 0,
+      imageDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    });
+    await db
+      .update(schema.documents)
+      .set({
+        extractedData: {
+          extraction: {
+            version: 1,
+            attempts: 1,
+            status: "complete",
+            method: "nvidia-llm",
+          },
+          fields: emptyBillFields(),
+        },
+        draftFields: { name: "My name" },
+      })
+      .where(eq(schema.documents.id, id));
+    expect((await service.finishReading(id)).ok).toBe(true);
+    expect(
+      dependencies.extractBillWithAi.mock.calls[0]![1].skipNameRepair,
+    ).toBe(true);
+    const review = await service.loadReview(id);
+    expect(review.ok && review.data.fields.name).toBe("My name");
+    const [document] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, id));
+    expect(document?.extractedData?.["extraction"]).toMatchObject({
+      version: 2,
+      attempts: 2,
+    });
   });
 });
 
