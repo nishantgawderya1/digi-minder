@@ -5,6 +5,7 @@ import { getAuthenticatedUserId } from "./auth.server";
 import { assistantRequestSchema, type AssistantRequest } from "./assistant";
 import { answerFromBills } from "./assistant-model.server";
 import { ServiceError, serviceResult } from "./service-error.server";
+import { nvidiaLlmConfig } from "./nvidia-config.server";
 
 export async function askAssistant(input: AssistantRequest) {
   const userId = await getAuthenticatedUserId();
@@ -24,7 +25,7 @@ export async function askAssistant(input: AssistantRequest) {
       .limit(51);
     if (data.itemId && !bills.length) throw new ServiceError("Bill not found.");
     if (!bills.length) return answerFromBills([], data.messages);
-    if (!process.env["NVIDIA_LLM_API_KEY"])
+    if (!nvidiaLlmConfig().key)
       throw new ServiceError(
         "The assistant is not configured on this server. Please try again after setup.",
       );

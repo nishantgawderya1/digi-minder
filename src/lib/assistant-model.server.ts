@@ -3,6 +3,7 @@ import type { Bill } from "./bills";
 import type { AssistantMessage, AssistantReply } from "./assistant";
 import { nvidiaJson } from "./nvidia.server";
 import { ServiceError } from "./service-error.server";
+import { nvidiaLlmConfig } from "./nvidia-config.server";
 
 export type AssistantBill = Pick<
   Bill,
@@ -35,7 +36,7 @@ export async function answerFromBills(
         "There are no saved bills in this view yet. Add a bill and save its reviewed details first.",
       sources: [],
     };
-  const key = process.env["NVIDIA_LLM_API_KEY"];
+  const { key, endpoint, model } = nvidiaLlmConfig();
   if (!key)
     throw new ServiceError(
       "The assistant is not configured on this server. Please try again after setup.",
@@ -61,12 +62,10 @@ export async function answerFromBills(
   if (JSON.stringify(facts).length > 60_000)
     throw new ServiceError("Select a single bill to ask this question.");
   const payload = await nvidiaJson(
-    `${(process.env["NVIDIA_LLM_BASE_URL"] || "https://integrate.api.nvidia.com/v1").replace(/\/$/, "")}/chat/completions`,
+    endpoint,
     key,
     {
-      model:
-        process.env["NVIDIA_LLM_MODEL"] ||
-        "nvidia/nemotron-3.5-lightning-30b-a3b",
+      model,
       messages: [
         {
           role: "system",

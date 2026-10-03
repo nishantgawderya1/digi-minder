@@ -8,10 +8,10 @@ import {
 import { extractBillFields, readReceiptDate } from "./ocr";
 import { nvidiaJson } from "./nvidia.server";
 import { ServiceError } from "./service-error.server";
+import { nvidiaLlmConfig } from "./nvidia-config.server";
 
 const MAX_TEXT = 60_000;
 export const EXTRACTION_VERSION = 1;
-const modelDefault = "nvidia/nemotron-3.5-lightning-30b-a3b";
 const fieldKeys = Object.keys(emptyBillFields()).filter(
   (key) => key !== "reminderDays",
 ) as Exclude<keyof BillFields, "reminderDays">[];
@@ -232,7 +232,8 @@ export async function extractBillWithAi(rawText: string) {
     return fallback(
       "No readable text was found. Upload a clearer original or enter the details manually.",
     );
-  if (!process.env["NVIDIA_LLM_API_KEY"])
+  const { key, endpoint, model } = nvidiaLlmConfig();
+  if (!key)
     return fallback(
       "Text was read, but AI field extraction is not configured on this server. Check and complete the fields manually.",
     );
@@ -240,13 +241,10 @@ export async function extractBillWithAi(rawText: string) {
     return fallback(
       "The document contains too much text for automatic field extraction. The full OCR text is available for manual review.",
     );
-  const model = process.env["NVIDIA_LLM_MODEL"] || modelDefault;
-  const base =
-    process.env["NVIDIA_LLM_BASE_URL"] || "https://integrate.api.nvidia.com/v1";
   try {
     const payload = await nvidiaJson(
-      `${base.replace(/\/$/, "")}/chat/completions`,
-      process.env["NVIDIA_LLM_API_KEY"],
+      endpoint,
+      key,
       {
         model,
         messages: [

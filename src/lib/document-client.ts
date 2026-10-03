@@ -211,6 +211,7 @@ export async function uploadDocument(
       },
     }),
   );
+  let backgroundAvailable = false;
   try {
     const response = await fetch(upload.uploadUrl, {
       method: "PUT",
@@ -220,13 +221,28 @@ export async function uploadDocument(
     });
     if (!response.ok)
       throw new Error("The file upload failed. Please try again.");
-    unwrap(await completeUpload({ data: { id: upload.id } }));
+    backgroundAvailable = unwrap(
+      await completeUpload({ data: { id: upload.id } }),
+    ).backgroundAvailable;
   } catch {
     return {
       id: upload.id,
       error:
         "The original hasn't finished uploading. Please retry from Add bill.",
     };
+  }
+  if (!backgroundAvailable) {
+    try {
+      await readPreparedDocument(upload.id, prepared, onProgress);
+    } catch (cause) {
+      return {
+        id: upload.id,
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "Reading couldn't finish. Complete the details manually.",
+      };
+    }
   }
   return { id: upload.id, error: null };
 }

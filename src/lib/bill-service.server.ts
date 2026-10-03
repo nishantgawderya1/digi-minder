@@ -31,6 +31,7 @@ import {
 import { serviceResult, ServiceError } from "./service-error.server";
 import { autosaveSchema, draftPatchSchema, evidenceWithPages } from "./review";
 import { backgroundConfigured } from "./inngest.server";
+import { nvidiaLlmConfig } from "./nvidia-config.server";
 
 async function ownedDocument(userId: string, id: string) {
   const [document] = await getDatabase()
@@ -254,7 +255,7 @@ export async function completeUpload(id: string) {
     if (document.ocrStatus !== "pending") {
       if (!document.itemId)
         await (await import("./processing.server")).ensureQueued(id, userId);
-      return { id };
+      return { id, backgroundAvailable: backgroundConfigured() };
     }
     if (!document.storageKey) throw new ServiceError("Upload not found.");
     const finalKey = `users/${encodeURIComponent(userId)}/documents/${id}`;
@@ -291,7 +292,7 @@ export async function completeUpload(id: string) {
     await (
       await import("./processing.server")
     ).ensureQueued(document.id, userId);
-    return { id };
+    return { id, backgroundAvailable: backgroundConfigured() };
   });
 }
 export async function readDocumentPage(data: {
@@ -536,7 +537,7 @@ export async function finishReadingForOwner(userId: string, id: string) {
       .set({
         extractedData: sql`coalesce(${documents.extractedData}, '{}'::jsonb) || jsonb_build_object('extraction', jsonb_build_object(
         'version', ${EXTRACTION_VERSION}::int, 'status', 'processing', 'requestId', ${requestId}::text,
-        'attempts', coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) + ${process.env["NVIDIA_LLM_API_KEY"] ? 1 : 0}::int))`,
+        'attempts', coalesce((${documents.extractedData}->'extraction'->>'attempts')::int, 0) + ${nvidiaLlmConfig().key ? 1 : 0}::int))`,
         updatedAt: new Date(),
       })
       .where(
