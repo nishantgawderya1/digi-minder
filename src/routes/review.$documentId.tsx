@@ -7,6 +7,8 @@ import {
 } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  Check,
+  ChevronDown,
   FileText,
   LoaderCircle,
   RotateCcw,
@@ -164,28 +166,57 @@ function ReviewEditor() {
           to="/vault"
           aria-label="Back to vault"
           title="Back to vault"
-          className="grid h-9 w-9 place-items-center rounded-sm border border-border"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-border"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="flex-1 text-base font-extrabold">Check the details</h1>
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
+            Step 2 of 3 · Review
+          </p>
+          <h1 className="text-base font-extrabold">Check the details</h1>
+        </div>
         <button
           onClick={discard}
           disabled={saving || reading}
           aria-label="Delete unfinished bill"
           title="Delete unfinished bill"
-          className="grid h-9 w-9 place-items-center rounded-sm border border-border text-destructive"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-border text-destructive"
         >
           <Trash2 className="h-4 w-4" />
         </button>
       </header>
       <div className="grid min-w-0 gap-7 px-5 py-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:px-8">
-        <div className="min-w-0 space-y-4">
-          <DocumentPreview
-            url={data.previewUrl}
-            filename={data.filename}
-            contentType={data.contentType}
-          />
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-6 lg:self-start">
+          <div className="hidden lg:block">
+            <h2 className="mb-3 text-sm font-bold">Your original</h2>
+            <DocumentPreview
+              url={data.previewUrl}
+              filename={data.filename}
+              contentType={data.contentType}
+            />
+          </div>
+          <details className="group rounded-xl border border-border bg-card lg:hidden">
+            <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
+              <FileText className="h-5 w-5 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold">
+                  View original receipt
+                </span>
+                <span className="mt-1 block truncate text-xs text-muted-foreground">
+                  {data.filename}
+                </span>
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-border p-4">
+              <DocumentPreview
+                url={data.previewUrl}
+                filename={data.filename}
+                contentType={data.contentType}
+              />
+            </div>
+          </details>
           <details className="border-y border-border py-3">
             <summary className="cursor-pointer text-sm font-bold">
               <FileText className="mr-2 inline h-4 w-4" />
@@ -271,7 +302,7 @@ function ReviewEditor() {
               AI-extracted details · Awaiting your review
             </p>
           ) : null}
-          <p className="border-l-2 border-primary pl-3 text-sm leading-relaxed text-muted-foreground">
+          <p className="rounded-xl border border-border bg-secondary/40 p-4 text-sm leading-relaxed text-muted-foreground">
             {data.status === "pending"
               ? "The original hasn't finished uploading. Upload it again before saving."
               : data.error ||
@@ -279,7 +310,18 @@ function ReviewEditor() {
                   ? "Automatic reading hasn't completed. Retry or enter the details from your original."
                   : lowConfidence
                     ? "Some text was difficult to read. Check the suggested values against your original."
-                    : "Check the extracted values against your original. Missing details are left blank.")}
+                    : "We filled in what we could read. Check the name, amount and dates before saving. You can view the original or expand a field's source to compare.")}
+          </p>
+          <p
+            role="status"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            {autosave.status === "Saved" ? (
+              <Check className="h-3.5 w-3.5 text-primary" />
+            ) : autosave.status === "Saving changes..." ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin text-primary" />
+            ) : null}
+            {autosave.status}
           </p>
           <BillForm
             key={data.id}
@@ -304,9 +346,6 @@ function ReviewEditor() {
                       : "Item name not found in the extracted details."
             }
           />
-          <p role="status" className="text-xs text-muted-foreground">
-            {autosave.status}
-          </p>
           {autosave.error ? (
             <div role="alert" className="text-sm text-destructive">
               {autosave.error}

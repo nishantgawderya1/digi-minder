@@ -22,7 +22,7 @@ export function DocumentPreview({
             rel="noreferrer"
             aria-label="Open original document"
             title="Open original document"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-border"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-border"
           >
             <ExternalLink className="h-4 w-4" />
           </a>

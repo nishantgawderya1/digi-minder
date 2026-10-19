@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Check, LoaderCircle, Save } from "lucide-react";
+import {
+  Bell,
+  Check,
+  ChevronDown,
+  LoaderCircle,
+  Save,
+  ShieldCheck,
+} from "lucide-react";
 import {
   saveBillSchema,
   categories,
@@ -33,6 +40,16 @@ export function BillForm({
 }) {
   const [fields, setFields] = useState(initial);
   const [validation, setValidation] = useState<string | null>(null);
+  const hasIdentifiers = Boolean(
+    fields.invoiceNumber ||
+    fields.serialNumber ||
+    fields.modelNumber ||
+    fields.barcode,
+  );
+  const [showProductDetails, setShowProductDetails] = useState(hasIdentifiers);
+  useEffect(() => {
+    if (hasIdentifiers) setShowProductDetails(true);
+  }, [hasIdentifiers]);
   const edited = useRef(new Set(Object.keys(draftPatch)));
   useEffect(
     () =>
@@ -142,12 +159,6 @@ export function BillForm({
           </p>
         </details>
       );
-    if (key === "currency")
-      return (
-        <p className="mt-1 text-[11px] font-normal text-muted-foreground">
-          Default currency
-        </p>
-      );
     return null;
   };
   const inputClass =
@@ -230,82 +241,89 @@ export function BillForm({
     onSave(result.data);
   };
   return (
-    <form onSubmit={submit} className="min-w-0 space-y-6">
+    <form onSubmit={submit} className="min-w-0 space-y-5">
       <fieldset
         disabled={saving || disabled}
-        className="min-w-0 space-y-5 disabled:opacity-60"
+        className="min-w-0 space-y-6 disabled:opacity-60"
       >
-        <legend className="mb-4 text-sm font-bold">Bill details</legend>
-        {textField("name", "Bill / item name")}
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-          {textField("retailer", "Store / retailer")}
-          {textField("brand", "Brand", 120)}
-          {textField("invoiceNumber", "Invoice / receipt number")}
-          <div className="min-w-0 text-xs font-semibold">
-            <label htmlFor="bill-category">Category</label>
-            <select
-              id="bill-category"
-              value={fields.category ?? ""}
-              onChange={(event) =>
-                update(
-                  "category",
-                  event.target.value
-                    ? (event.target.value as BillFields["category"])
-                    : null,
-                )
-              }
-              className={inputClass}
+        <legend className="sr-only">Bill details</legend>
+        <section
+          className="space-y-4"
+          aria-labelledby="purchase-details-heading"
+        >
+          <div>
+            <h2 id="purchase-details-heading" className="text-base font-bold">
+              Purchase details
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              A name is required. Check the currency shown; other details can be
+              added later.
+            </p>
+          </div>
+          {textField("name", "Bill / item name")}
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            {textField("retailer", "Store / retailer")}
+            {dateField("purchaseDate", "Purchase date")}
+          </div>
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_100px] gap-4">
+            <div className="min-w-0 text-xs font-semibold">
+              <label htmlFor="bill-price">Amount paid</label>
+              <input
+                id="bill-price"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="9999999999.99"
+                step="0.01"
+                value={fields.purchasePrice ?? ""}
+                onChange={(event) =>
+                  update("purchasePrice", event.target.value || null)
+                }
+                className={inputClass}
+              />
+              {provenance("purchasePrice")}
+            </div>
+            <div className="min-w-0 text-xs font-semibold">
+              <label htmlFor="bill-currency">Currency</label>
+              <input
+                id="bill-currency"
+                value={fields.currency}
+                onChange={(event) =>
+                  update("currency", event.target.value.toUpperCase())
+                }
+                maxLength={3}
+                minLength={3}
+                required
+                aria-describedby="bill-currency-help"
+                className={inputClass}
+              />
+              <p
+                id="bill-currency-help"
+                className="mt-1 text-[11px] font-normal text-muted-foreground"
+              >
+                3-letter code
+              </p>
+              {provenance("currency")}
+            </div>
+          </div>
+        </section>
+        <section
+          className="rounded-xl border border-border bg-secondary/40 p-4 sm:p-5"
+          aria-labelledby="warranty-details-heading"
+        >
+          <div className="mb-4">
+            <h2
+              id="warranty-details-heading"
+              className="flex items-center gap-2 text-base font-bold"
             >
-              <option value="">Uncategorized</option>
-              {categories.map((category) => (
-                <option key={category}>{category}</option>
-              ))}
-            </select>
-            {provenance("category")}
+              <ShieldCheck className="h-4 w-4 text-primary" />
+              Warranty & returns
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Add a duration or an end date from the receipt or policy. Leave
+              unknown dates blank.
+            </p>
           </div>
-        </div>
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-          {textField("serialNumber", "Serial number / IMEI")}
-          {textField("modelNumber", "Model number")}
-          {textField("barcode", "Barcode / EAN / UPC")}
-          {dateField("purchaseDate", "Purchase date")}
-        </div>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_100px] gap-4">
-          <div className="min-w-0 text-xs font-semibold">
-            <label htmlFor="bill-price">Amount paid</label>
-            <input
-              id="bill-price"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              max="9999999999.99"
-              step="0.01"
-              value={fields.purchasePrice ?? ""}
-              onChange={(event) =>
-                update("purchasePrice", event.target.value || null)
-              }
-              className={inputClass}
-            />
-            {provenance("purchasePrice")}
-          </div>
-          <div className="min-w-0 text-xs font-semibold">
-            <label htmlFor="bill-currency">Currency</label>
-            <input
-              id="bill-currency"
-              value={fields.currency}
-              onChange={(event) =>
-                update("currency", event.target.value.toUpperCase())
-              }
-              maxLength={3}
-              minLength={3}
-              required
-              className={inputClass}
-            />
-            {provenance("currency")}
-          </div>
-        </div>
-        <div className="border-t border-border pt-5">
-          <h3 className="mb-4 text-sm font-bold">Warranty & returns</h3>
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             <div className="min-w-0 text-xs font-semibold">
               <label htmlFor="bill-warranty-months">Warranty (months)</label>
@@ -348,46 +366,92 @@ export function BillForm({
             </div>
             {dateField("returnExpiresAt", "Return deadline")}
           </div>
-        </div>
+          <fieldset className="mt-5 border-t border-border pt-3">
+            <legend className="flex items-center gap-1.5 pr-2 text-xs font-semibold">
+              <Bell className="h-3.5 w-3.5 text-primary" />
+              Remind me before the deadline
+            </legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[30, 7, 1].map((days) => (
+                <label
+                  key={days}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={fields.reminderDays.includes(days)}
+                    onChange={(event) =>
+                      update(
+                        "reminderDays",
+                        event.target.checked
+                          ? [...fields.reminderDays, days]
+                          : fields.reminderDays.filter((day) => day !== days),
+                      )
+                    }
+                  />
+                  {days} {days === 1 ? "day" : "days"}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </section>
+        <details
+          open={showProductDetails}
+          onToggle={(event) => setShowProductDetails(event.currentTarget.open)}
+          className="group rounded-xl border border-border bg-card"
+        >
+          <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-sm font-bold">Product details</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Optional · brand, category & reference numbers
+              </span>
+            </span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid min-w-0 gap-4 border-t border-border p-4 sm:grid-cols-2">
+            {textField("brand", "Brand", 120)}
+            <div className="min-w-0 text-xs font-semibold">
+              <label htmlFor="bill-category">Category</label>
+              <select
+                id="bill-category"
+                value={fields.category ?? ""}
+                onChange={(event) =>
+                  update(
+                    "category",
+                    event.target.value
+                      ? (event.target.value as BillFields["category"])
+                      : null,
+                  )
+                }
+                className={inputClass}
+              >
+                <option value="">Uncategorized</option>
+                {categories.map((category) => (
+                  <option key={category}>{category}</option>
+                ))}
+              </select>
+              {provenance("category")}
+            </div>
+            {textField("invoiceNumber", "Invoice / receipt number")}
+            {textField("serialNumber", "Serial number / IMEI")}
+            {textField("modelNumber", "Model number")}
+            {textField("barcode", "Barcode / EAN / UPC")}
+          </div>
+        </details>
         <label htmlFor="bill-notes" className="block text-xs font-semibold">
-          Notes
+          Notes{" "}
+          <span className="font-normal text-muted-foreground">(optional)</span>
           <textarea
             id="bill-notes"
-            rows={3}
+            rows={2}
             maxLength={4000}
             value={fields.notes ?? ""}
             onChange={(event) => update("notes", event.target.value || null)}
             className={inputClass}
           />
         </label>
-        <fieldset className="border-t border-border pt-4">
-          <legend className="text-xs font-semibold">
-            Remind me before the deadline
-          </legend>
-          <div className="mt-2 flex flex-wrap gap-4">
-            {[30, 7, 1].map((days) => (
-              <label
-                key={days}
-                className="inline-flex items-center gap-2 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  className="accent-primary"
-                  checked={fields.reminderDays.includes(days)}
-                  onChange={(event) =>
-                    update(
-                      "reminderDays",
-                      event.target.checked
-                        ? [...fields.reminderDays, days]
-                        : fields.reminderDays.filter((day) => day !== days),
-                    )
-                  }
-                />
-                {days} {days === 1 ? "day" : "days"}
-              </label>
-            ))}
-          </div>
-        </fieldset>
       </fieldset>
       {error || validation ? (
         <p
@@ -400,7 +464,7 @@ export function BillForm({
       <button
         type="submit"
         disabled={saving || disabled}
-        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-[0_4px_0_0_var(--color-foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {saving ? (
           <LoaderCircle className="h-4 w-4 animate-spin" />

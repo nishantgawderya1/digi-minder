@@ -7,6 +7,9 @@ import {
   Images,
   LoaderCircle,
   X,
+  Check,
+  ShieldCheck,
+  ArrowRight,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PhoneShell } from "@/components/phone-shell";
@@ -203,18 +206,57 @@ export function ScanScreen() {
 
   return (
     <PhoneShell showMobileTabs={false}>
-      <header className="flex items-center gap-3 border-b border-border px-5 py-4 lg:px-8">
+      <header className="capture-header flex items-center gap-3 border-b border-border px-5 py-4 lg:px-8">
         <Link
           to="/home"
           title="Back to Today"
           aria-label="Back to Today"
-          className="grid h-9 w-9 place-items-center rounded-sm border border-border"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-border"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="text-base font-extrabold">Add a bill</h1>
+        <div>
+          <h1 className="text-base font-bold">Add a bill</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            A photo or PDF is all you need.
+          </p>
+        </div>
       </header>
-      <div className="grid min-w-0 gap-5 px-5 pt-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:px-8">
+      <ol
+        aria-label="Bill capture progress"
+        className={`${cameraActive ? "hidden lg:flex" : "flex"} items-center gap-3 px-5 pt-5 text-[11px] font-semibold lg:px-8`}
+      >
+        <li
+          aria-current="step"
+          className="flex items-center gap-2 text-primary"
+        >
+          <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground">
+            1
+          </span>
+          Upload
+          <ArrowRight
+            aria-hidden="true"
+            className="ml-1 h-3 w-3 text-muted-foreground"
+          />
+        </li>
+        <li className="flex items-center gap-2 text-muted-foreground">
+          <span className="grid h-6 w-6 place-items-center rounded-full border border-border">
+            2
+          </span>
+          Review
+          <ArrowRight
+            aria-hidden="true"
+            className="ml-1 h-3 w-3 text-muted-foreground"
+          />
+        </li>
+        <li className="flex items-center gap-2 text-muted-foreground">
+          <span className="grid h-6 w-6 place-items-center rounded-full border border-border">
+            <Check className="h-3 w-3" />
+          </span>
+          Save
+        </li>
+      </ol>
+      <div className="capture-content grid min-w-0 gap-5 px-5 pt-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:px-8">
         {selectedFile && !cameraActive ? (
           <DocumentPreview
             url={previewUrl}
@@ -223,7 +265,8 @@ export function ScanScreen() {
           />
         ) : (
           <div
-            className={`relative overflow-hidden rounded-sm border border-foreground bg-foreground ${cameraActive ? "h-[min(58svh,calc(100svh-208px))] min-h-32" : "h-[min(48svh,420px)] min-h-52"} lg:h-[520px]`}
+            data-camera-active={cameraActive}
+            className={`capture-preview relative overflow-hidden rounded-lg border ${cameraActive ? "border-foreground bg-foreground h-[min(58svh,calc(100svh-208px))] min-h-32" : "border-primary/20 bg-secondary/45 h-[min(40svh,360px)] min-h-52"} lg:h-[440px]`}
           >
             {cameraActive ? (
               <video
@@ -232,20 +275,28 @@ export function ScanScreen() {
                 playsInline
                 muted
                 onCanPlay={() => setCameraReady(true)}
-                className="absolute inset-x-0 top-0 h-[calc(100%-96px)] w-full object-contain"
+                className="capture-video absolute inset-x-0 top-0 h-[calc(100%-96px)] w-full object-contain"
                 aria-label="Live camera preview"
               />
             ) : (
-              <div className="absolute inset-0 grid place-content-center gap-3 text-center text-background/70">
-                <ScanLine className="mx-auto h-12 w-12" strokeWidth={1.5} />
-                <p className="text-sm font-semibold">No bill selected</p>
+              <div className="absolute inset-0 grid place-content-center gap-3 px-8 text-center">
+                <span className="mx-auto grid h-20 w-16 place-items-center rounded-lg border border-primary/15 bg-card text-primary shadow-sm">
+                  <ScanLine className="h-8 w-8" strokeWidth={1.5} />
+                </span>
+                <p className="mt-2 text-lg font-semibold">
+                  Keep the receipt. Lose the clutter.
+                </p>
+                <p className="mx-auto max-w-60 text-xs leading-relaxed text-muted-foreground">
+                  Choose a clear photo or PDF. You’ll check the details before
+                  the bill is added to your vault.
+                </p>
               </div>
             )}
             <div
-              className={`pointer-events-none absolute inset-x-6 top-6 border-2 border-dashed border-background/50 ${cameraActive ? "bottom-28" : "bottom-6"}`}
+              className={`capture-guide pointer-events-none absolute inset-x-5 top-5 rounded-sm border border-dashed ${cameraActive ? "bottom-28 border-background/50" : "bottom-5 border-primary/20"}`}
             />
             {cameraActive ? (
-              <div className="absolute inset-x-0 bottom-0 flex justify-center bg-foreground/70 py-4">
+              <div className="capture-shutter absolute inset-x-0 bottom-0 flex justify-center bg-foreground/70 py-4">
                 <button
                   type="button"
                   aria-label="Take photo"
@@ -268,7 +319,7 @@ export function ScanScreen() {
                 disabled={busy}
                 title="Close camera"
                 aria-label="Close camera"
-                className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-sm bg-background text-foreground"
+                className="capture-close absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-sm bg-background text-foreground"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -276,9 +327,13 @@ export function ScanScreen() {
           </div>
         )}
         <div className="min-w-0 space-y-5 lg:pt-2">
-          <h2 className="hidden text-lg font-bold lg:block">
+          <h2 className="hidden text-xl font-bold lg:block">
             Bill, invoice or warranty card
           </h2>
+          <p className="hidden text-sm leading-relaxed text-muted-foreground lg:block">
+            Upload an existing receipt, or use your camera to capture one.
+            Original files stay attached to your bill.
+          </p>
           <input
             ref={imageInput}
             type="file"
@@ -306,7 +361,7 @@ export function ScanScreen() {
           <div
             role="group"
             aria-label="Bill upload options"
-            className="fixed bottom-0 left-1/2 z-30 grid w-full max-w-[760px] -translate-x-1/2 grid-cols-3 gap-2 border-t border-border bg-background px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] lg:static lg:max-w-none lg:translate-x-0 lg:grid-cols-1 lg:border-0 lg:bg-transparent lg:p-0"
+            className="capture-toolbar fixed bottom-0 left-1/2 z-30 grid w-full max-w-[760px] -translate-x-1/2 grid-cols-3 gap-2 border-t border-border bg-background px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] lg:static lg:max-w-none lg:translate-x-0 lg:grid-cols-1 lg:border-0 lg:bg-transparent lg:p-0"
           >
             <button
               onClick={cameraActive ? stopCamera : startCamera}
@@ -349,7 +404,7 @@ export function ScanScreen() {
               const file = event.dataTransfer.files[0];
               if (file && !busy && !capturing) void handleFile(file);
             }}
-            className="hidden min-h-28 w-full flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border p-4 text-sm text-muted-foreground lg:flex"
+            className="hidden min-h-28 w-full flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-primary/40 bg-card p-4 text-sm text-primary transition hover:bg-secondary/50 lg:flex"
           >
             <FileUp className="h-6 w-6" />
             Drop a file here
@@ -357,6 +412,13 @@ export function ScanScreen() {
           <p className="text-xs text-muted-foreground">
             JPG, PNG, WebP or PDF · Up to 15 MB and 10 pages
           </p>
+          <div className="flex items-start gap-2 rounded-sm bg-card p-3 text-xs leading-relaxed text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <p>
+              Keep all corners visible and avoid glare. You can correct anything
+              the scan misses.
+            </p>
+          </div>
           {busy ? (
             <div
               ref={progressMessage}

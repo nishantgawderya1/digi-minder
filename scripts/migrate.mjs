@@ -1,10 +1,13 @@
 import "dotenv/config";
 import { neon } from "@neondatabase/serverless";
-import { readMigrationFiles } from "drizzle-orm/migrator";
+import {
+  matchesMigrationHistory,
+  readProjectMigrationFiles,
+} from "./migration-files.mjs";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
 const client = neon(process.env.DATABASE_URL);
-const migrations = readMigrationFiles({
+const migrations = readProjectMigrationFiles({
   migrationsFolder: "./src/db/migrations/generated",
 });
 await client.query("CREATE SCHEMA IF NOT EXISTS drizzle");
@@ -105,19 +108,13 @@ if (!applied.length && existing.length) {
 }
 
 for (const row of applied) {
-  if (
-    !migrations.some(
-      (migration) =>
-        migration.hash === row.hash &&
-        migration.folderMillis === Number(row.created_at),
-    )
-  )
+  if (!migrations.some((migration) => matchesMigrationHistory(migration, row)))
     throw new Error(
       "Migration history does not match the checked-in files. Refusing to continue.",
     );
 }
 for (const migration of migrations) {
-  if (applied.some((row) => row.hash === migration.hash)) continue;
+  if (applied.some((row) => matchesMigrationHistory(migration, row))) continue;
   await client.transaction([
     ...migration.sql
       .filter((statement) => statement.trim())

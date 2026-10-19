@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUp, FileText, LoaderCircle, Plus, RotateCcw } from "lucide-react";
+import {
+  ArrowUp,
+  ArrowUpRight,
+  FileText,
+  LoaderCircle,
+  Plus,
+  RotateCcw,
+} from "lucide-react";
 import type { Bill } from "@/lib/bills";
 import type { AssistantMessage, AssistantReply } from "@/lib/assistant";
 import { askAssistant } from "@/lib/assistant-functions";
@@ -24,6 +31,39 @@ export function AssistantChat({
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
   const end = useRef<HTMLDivElement>(null);
+  const questionInput = useRef<HTMLTextAreaElement>(null);
+  const selectedBill = bills.find((bill) => bill.id === selected);
+  const suggestions = selectedBill
+    ? [
+        {
+          label: "Warranty & return dates",
+          question: `What warranty and return dates are recorded for ${selectedBill.name}?`,
+        },
+        {
+          label: "Purchase price & store",
+          question: `How much did I pay for ${selectedBill.name}, and where did I buy it?`,
+        },
+        {
+          label: "Product reference numbers",
+          question: `What invoice, serial and model numbers are saved for ${selectedBill.name}?`,
+        },
+      ]
+    : [
+        {
+          label: "Which warranties end soon?",
+          question: "Which of my saved bills have a warranty ending soon?",
+        },
+        {
+          label: "Find my return deadlines",
+          question:
+            "What return deadlines are recorded for my saved purchases?",
+        },
+        {
+          label: "Review purchase amounts",
+          question:
+            "What amounts and stores are recorded for my saved purchases?",
+        },
+      ];
   useEffect(
     () => () => {
       generation.current++;
@@ -77,11 +117,8 @@ export function AssistantChat({
   return (
     <div className="flex min-w-0 flex-col">
       <div className="flex items-end gap-3 border-b border-border pb-4">
-        <label
-          className="min-w-0 flex-1 text-xs font-semibold"
-          htmlFor="chat-bill"
-        >
-          Bills
+        <div className="min-w-0 flex-1 text-xs font-semibold">
+          <label htmlFor="chat-bill">Bills</label>
           <select
             id="chat-bill"
             value={selected}
@@ -101,7 +138,7 @@ export function AssistantChat({
               </option>
             ))}
           </select>
-        </label>
+        </div>
         <button
           type="button"
           title="New chat"
@@ -121,21 +158,49 @@ export function AssistantChat({
         className="min-h-64 max-h-[55dvh] space-y-5 overflow-y-auto py-5 pr-1 lg:min-h-80"
       >
         {!messages.length && !pending ? (
-          <div className="py-10 text-center">
-            <p className="text-sm text-muted-foreground">
+          <div className="mx-auto max-w-lg py-5 text-center">
+            <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+              <FileText className="h-6 w-6" />
+            </div>
+            <h2 className="text-lg font-bold">
               {bills.length
-                ? "What would you like to know?"
+                ? selectedBill
+                  ? "Ask about this purchase"
+                  : "Find answers in your bills"
+                : "Save your first bill"}
+            </h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+              {bills.length
+                ? "Find recorded prices, reference numbers and deadlines. Answers use the saved details in the bills you choose."
                 : "No saved bills yet."}
             </p>
-            {!bills.length ? (
+            {bills.length ? (
+              <div className="mt-5 grid gap-2 text-left">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.label}
+                    type="button"
+                    onClick={() => {
+                      setQuestion(suggestion.question);
+                      setError(null);
+                      questionInput.current?.focus();
+                    }}
+                    className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left text-sm font-medium transition-colors hover:border-primary/40 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    {suggestion.label}
+                    <ArrowUpRight className="h-4 w-4 shrink-0 text-primary" />
+                  </button>
+                ))}
+              </div>
+            ) : (
               <Link
                 to="/scan"
-                className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-primary"
+                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground"
               >
                 <Plus className="h-4 w-4" />
                 Add a bill
               </Link>
-            ) : null}
+            )}
           </div>
         ) : null}
         {messages.map((message, index) => (
@@ -143,8 +208,8 @@ export function AssistantChat({
             key={index}
             className={
               message.role === "user"
-                ? "ml-6 border-l-2 border-border pl-4 sm:ml-16"
-                : "border-l-2 border-primary pl-4"
+                ? "ml-6 rounded-xl bg-secondary p-4 sm:ml-16"
+                : "rounded-xl border border-border bg-card p-4"
             }
           >
             <p className="mb-1 text-xs font-semibold text-muted-foreground">
@@ -204,11 +269,17 @@ export function AssistantChat({
         <div className="flex items-end gap-2">
           <textarea
             id="assistant-question"
+            ref={questionInput}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             required
             maxLength={4000}
             rows={3}
+            placeholder={
+              selectedBill
+                ? "Ask about this purchase..."
+                : "Ask about your saved bills..."
+            }
             disabled={!!pending || !bills.length}
             className="block min-w-0 flex-1 resize-y rounded-sm border border-input bg-card p-3 text-sm disabled:opacity-50"
           />
@@ -226,6 +297,10 @@ export function AssistantChat({
             )}
           </button>
         </div>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          Answers reference saved bill details. Open a source to check the
+          original record.
+        </p>
         {error ? (
           <p role="alert" className="mt-3 text-sm text-destructive">
             {error}

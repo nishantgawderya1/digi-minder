@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Bell, Bot, Home, Plus, Wallet } from "lucide-react";
+import { Bell, Bot, Home, Plus, ShieldCheck, Wallet } from "lucide-react";
 import { UserButton } from "@clerk/tanstack-react-start";
 import type { ReactNode } from "react";
 
@@ -20,16 +20,28 @@ export function PhoneShell({
   showMobileTabs?: boolean;
 }) {
   return (
-    <div className="min-h-screen bg-secondary">
-      <div className="mx-auto grid min-h-screen w-full max-w-[1280px] bg-background lg:grid-cols-[260px_minmax(0,1fr)] lg:border-x lg:border-border">
+    <div className="min-h-dvh bg-background">
+      <a
+        href="#main-content"
+        className="sr-only fixed left-4 top-4 z-50 rounded-sm bg-primary px-4 py-3 font-semibold text-primary-foreground focus:not-sr-only"
+      >
+        Skip to content
+      </a>
+      <div
+        className={`mx-auto grid min-h-dvh w-full max-w-[1440px] ${showTabs ? "lg:grid-cols-[232px_minmax(0,1fr)]" : ""}`}
+      >
         {showTabs ? <DesktopRail /> : null}
-        <div className="mx-auto flex min-h-screen w-full max-w-[760px] flex-col border-x border-border bg-background lg:max-w-none lg:border-x-0">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto flex min-h-dvh w-full min-w-0 max-w-[760px] flex-col lg:max-w-none"
+        >
           <div
-            className={`min-w-0 flex-1 ${showMobileTabs ? "pb-[calc(7rem+env(safe-area-inset-bottom))]" : "pb-[calc(8rem+env(safe-area-inset-bottom))]"} lg:pb-8`}
+            className={`min-w-0 flex-1 ${showMobileTabs ? "pb-[calc(6rem+env(safe-area-inset-bottom))]" : "pb-[calc(8rem+env(safe-area-inset-bottom))]"} lg:pb-8`}
           >
             {children}
           </div>
-        </div>
+        </main>
         {showTabs && showMobileTabs ? <TabBar /> : null}
       </div>
     </div>
@@ -38,31 +50,48 @@ export function PhoneShell({
 
 function DesktopRail() {
   return (
-    <aside className="sticky top-0 hidden h-screen border-r border-border bg-card/55 px-4 py-5 lg:flex lg:flex-col">
+    <aside className="sticky top-0 hidden h-screen border-r border-border bg-sidebar px-5 py-8 lg:flex lg:flex-col">
       <Link
-        to="/"
-        className="font-display text-xl font-extrabold tracking-tight"
+        to="/home"
+        className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight"
       >
+        <span className="grid h-10 w-10 place-items-center rounded-sm bg-primary text-primary-foreground">
+          <ShieldCheck className="h-6 w-6" />
+        </span>
         Warrantly
       </Link>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        Bills, warranty cards and support records in one searchable vault.
+      <p className="mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        Your workspace
       </p>
-      <nav className="mt-8 space-y-1">
+      <nav aria-label="Main navigation" className="mt-3 space-y-1.5">
         {tabs.map((tab) => (
           <RailLink key={tab.to} {...tab} />
         ))}
         <Link
           to="/scan"
-          className="mt-4 flex items-center gap-3 rounded-sm bg-foreground px-3 py-3 text-sm font-bold text-background"
+          className="mt-6 flex min-h-11 items-center justify-center gap-2 rounded-sm bg-primary px-3 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
         >
-          <Plus className="h-4 w-4" strokeWidth={2.4} />
+          <Plus className="h-4 w-4" />
           Add a bill
         </Link>
       </nav>
-      <div className="mt-auto flex items-center gap-3 border-t border-border pt-4">
-        <UserButton />
-        <p className="text-xs text-muted-foreground">Your private vault</p>
+      <div className="mt-auto">
+        <div className="mb-5 rounded-sm bg-secondary/65 p-3.5">
+          <ShieldCheck className="mb-2 h-5 w-5 text-primary" />
+          <p className="text-xs font-semibold">A little less paperwork.</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Your receipts and warranty dates, ready when you need them.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 border-t border-border pt-5">
+          <UserButton />
+          <div>
+            <p className="text-xs font-semibold">Personal account</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Your private vault
+            </p>
+          </div>
+        </div>
       </div>
     </aside>
   );
@@ -70,17 +99,23 @@ function DesktopRail() {
 
 function TabBar() {
   return (
-    <nav className="fixed bottom-0 left-1/2 z-20 w-full max-w-[760px] -translate-x-1/2 border-t border-border bg-background/95 backdrop-blur lg:hidden">
-      <div className="grid grid-cols-[1fr_auto_1fr_1fr_1fr] items-end gap-1 px-2 pb-5 pt-2">
+    <nav
+      aria-label="Mobile navigation"
+      className="fixed bottom-0 left-1/2 z-20 w-full max-w-[760px] -translate-x-1/2 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+    >
+      <div className="grid grid-cols-5 items-center gap-1 px-2 py-2">
         <TabLink {...tabs[0]} />
+        <TabLink {...tabs[1]} />
         <Link
           to="/scan"
-          className="mx-1 grid h-14 w-14 shrink-0 translate-y-[-14px] place-items-center rounded-full bg-foreground text-background shadow-[0_6px_0_0_var(--color-primary)] transition active:translate-y-[-10px] active:shadow-[0_2px_0_0_var(--color-primary)]"
+          className="flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] font-semibold text-primary"
           aria-label="Add a bill"
         >
-          <Plus className="h-6 w-6" strokeWidth={2.5} />
+          <span className="grid h-9 w-11 place-items-center rounded-sm bg-primary text-primary-foreground">
+            <Plus className="h-5 w-5" />
+          </span>
+          Add bill
         </Link>
-        <TabLink {...tabs[1]} />
         <TabLink {...tabs[2]} />
         <TabLink {...tabs[3]} />
       </div>
@@ -100,14 +135,13 @@ function RailLink({
   return (
     <Link
       to={to}
-      activeProps={{ className: "bg-primary text-primary-foreground" }}
+      activeProps={{ className: "bg-secondary text-primary" }}
       inactiveProps={{
-        className:
-          "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        className: "text-muted-foreground hover:bg-muted hover:text-foreground",
       }}
-      className="flex items-center gap-3 rounded-sm px-3 py-3 text-sm font-bold transition"
+      className="flex min-h-11 items-center gap-3 rounded-sm px-3 py-3 text-sm font-semibold transition"
     >
-      <Icon className="h-4 w-4" strokeWidth={2.2} />
+      <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
       {label}
     </Link>
   );
@@ -125,11 +159,11 @@ function TabLink({
   return (
     <Link
       to={to}
-      activeProps={{ className: "text-primary" }}
+      activeProps={{ className: "text-primary bg-secondary/60" }}
       inactiveProps={{ className: "text-muted-foreground" }}
-      className="flex min-w-0 flex-col items-center gap-1 rounded-sm py-1 text-[11px] font-semibold tracking-normal"
+      className="flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-sm px-0.5 text-[10px] font-semibold"
     >
-      <Icon className="h-5 w-5" strokeWidth={2.2} />
+      <Icon className="h-5 w-5" strokeWidth={1.8} />
       {label}
     </Link>
   );
@@ -139,18 +173,27 @@ export function ScreenHeader({
   eyebrow,
   title,
   right,
+  description,
 }: {
   eyebrow: string;
   title: string;
   right?: ReactNode;
+  description?: string;
 }) {
   return (
-    <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-b border-border px-5 pb-4 pt-8 lg:px-8 lg:pt-10">
+    <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 pb-2 pt-7 lg:px-8 lg:pt-9">
       <div className="min-w-0">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           {eyebrow}
         </p>
-        <h1 className="mt-1 break-words text-2xl font-extrabold">{title}</h1>
+        <h1 className="mt-1.5 break-words text-[28px] font-bold tracking-tight lg:text-[32px]">
+          {title}
+        </h1>
+        {description ? (
+          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
       </div>
       {right}
     </header>
@@ -165,14 +208,14 @@ export function StatusChip({
   children: ReactNode;
 }) {
   const styles = {
-    active: "bg-primary text-primary-foreground",
-    ending: "bg-accent text-accent-foreground",
-    expired: "bg-secondary text-muted-foreground",
+    active: "bg-primary/10 text-primary",
+    ending: "bg-accent/20 text-foreground",
+    expired: "bg-destructive/10 text-destructive",
     unknown: "bg-secondary text-muted-foreground",
   }[tone];
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${styles}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${styles}`}
     >
       {children}
     </span>

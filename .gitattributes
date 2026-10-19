@@ -1,0 +1,2 @@
+# Migration checksums must be stable on Windows and Linux.
+src/db/migrations/generated/*.sql text eol=lf

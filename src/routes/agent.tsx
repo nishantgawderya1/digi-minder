@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Check, Copy, FilePenLine, MessageSquare, Plus } from "lucide-react";
 import { z } from "zod";
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export const Route = createFileRoute("/agent")({
   validateSearch: z.object({
     itemId: z.string().uuid().optional().catch(undefined),
+    tab: z.enum(["chat", "draft"]).optional().catch(undefined),
   }),
   beforeLoad: () => requireCurrentUser(),
   loader: async () => unwrap(await loadVault()),
@@ -19,18 +20,38 @@ export const Route = createFileRoute("/agent")({
 });
 function AgentScreen() {
   const { bills } = Route.useLoaderData();
-  const { itemId } = Route.useSearch();
+  const { itemId, tab } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [selected, setSelected] = useState(itemId ?? "");
   const [issue, setIssue] = useState("");
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setSelected(itemId ?? "");
+    setIssue("");
+    setDraft("");
+    setCopied(false);
+    setError(null);
+  }, [itemId]);
   const bill = bills.find((entry) => entry.id === selected);
   return (
     <PhoneShell>
       <ScreenHeader eyebrow="Assistant" title="Your bills, answered" />
-      <Tabs defaultValue="chat" className="p-5 lg:p-8">
-        <TabsList className="mb-5">
+      <Tabs
+        value={tab ?? "chat"}
+        onValueChange={(value) =>
+          void navigate({
+            search: (previous) => ({
+              ...previous,
+              tab: value === "draft" ? "draft" : "chat",
+            }),
+            replace: true,
+          })
+        }
+        className="p-5 lg:p-8"
+      >
+        <TabsList className="mb-5 h-11 w-full sm:w-auto">
           <TabsTrigger value="chat" className="gap-2">
             <MessageSquare className="h-4 w-4" />
             Chat
@@ -41,10 +62,17 @@ function AgentScreen() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="chat">
-          <AssistantChat bills={bills} itemId={itemId} />
+          <AssistantChat key={itemId ?? "all"} bills={bills} itemId={itemId} />
         </TabsContent>
         <TabsContent value="draft">
           <div className="space-y-6">
+            <div className="rounded-xl border border-border bg-secondary/40 p-4">
+              <h2 className="text-sm font-bold">Start a support request</h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Choose a purchase and describe the problem. We'll add the saved
+                bill details to a draft you can review, copy and send.
+              </p>
+            </div>
             {!bills.length ? (
               <div className="py-10 text-center">
                 <p className="text-sm text-muted-foreground">
@@ -70,11 +98,8 @@ function AgentScreen() {
                   }
                 }}
               >
-                <label
-                  htmlFor="support-bill"
-                  className="block text-xs font-semibold"
-                >
-                  Bill
+                <div className="block text-xs font-semibold">
+                  <label htmlFor="support-bill">Bill</label>
                   <select
                     id="support-bill"
                     required
@@ -92,7 +117,7 @@ function AgentScreen() {
                       </option>
                     ))}
                   </select>
-                </label>
+                </div>
                 <label
                   htmlFor="support-issue"
                   className="block text-xs font-semibold"
@@ -103,6 +128,7 @@ function AgentScreen() {
                     required
                     maxLength={4000}
                     rows={5}
+                    placeholder="For example: My headphones stopped charging. I have tried a different cable."
                     value={issue}
                     onChange={(event) => {
                       setIssue(event.target.value);
@@ -121,7 +147,7 @@ function AgentScreen() {
               </form>
             )}
             {draft ? (
-              <section className="border-t border-border pt-6">
+              <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-bold">Draft, not sent</h2>
                   <button
@@ -138,7 +164,7 @@ function AgentScreen() {
                           ),
                         );
                     }}
-                    className="grid h-10 w-10 place-items-center border border-border"
+                    className="grid h-11 w-11 shrink-0 place-items-center border border-border"
                   >
                     {copied ? (
                       <Check className="h-4 w-4" />
@@ -147,6 +173,10 @@ function AgentScreen() {
                     )}
                   </button>
                 </div>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  Check the details, then copy this into your email or the
+                  retailer's support form.
+                </p>
                 <textarea
                   aria-label="Support request draft"
                   value={draft}

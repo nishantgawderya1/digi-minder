@@ -118,7 +118,7 @@ function ItemScreen() {
             to="/vault"
             title="Back to vault"
             aria-label="Back to vault"
-            className="grid h-10 w-10 place-items-center border border-border"
+            className="grid h-11 w-11 shrink-0 place-items-center border border-border"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -136,7 +136,7 @@ function ItemScreen() {
                 setEditing(!editing);
                 setError(null);
               }}
-              className="grid h-10 w-10 place-items-center border border-border disabled:opacity-50"
+              className="grid h-11 w-11 shrink-0 place-items-center border border-border disabled:opacity-50"
             >
               {editing ? (
                 <X className="h-4 w-4" />
@@ -149,7 +149,7 @@ function ItemScreen() {
               title="Delete bill"
               disabled={busy}
               onClick={() => void remove()}
-              className="grid h-10 w-10 place-items-center border border-destructive/30 text-destructive disabled:opacity-50"
+              className="grid h-11 w-11 shrink-0 place-items-center border border-destructive/30 text-destructive disabled:opacity-50"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -202,7 +202,7 @@ function ItemScreen() {
                       aria-label={`Download ${file.filename}`}
                       title="Download original"
                       onClick={() => void download(file.id)}
-                      className="grid h-10 w-10 shrink-0 place-items-center border border-border disabled:opacity-50"
+                      className="grid h-11 w-11 shrink-0 place-items-center border border-border disabled:opacity-50"
                     >
                       <Download className="h-4 w-4" />
                     </button>
@@ -217,7 +217,7 @@ function ItemScreen() {
             </section>
             <Link
               to="/agent"
-              search={{ itemId: bill.id }}
+              search={{ itemId: bill.id, tab: "draft" }}
               className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-3 text-sm font-bold text-primary-foreground"
             >
               <Pencil className="h-4 w-4" />

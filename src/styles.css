@@ -65,26 +65,26 @@
 }
 
 :root {
-  --radius: 0.25rem;
+  --radius: 1rem;
   --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
-  --background: oklch(0.962 0.006 90);
+  --background: oklch(0.975 0.004 100);
   --foreground: oklch(0.206 0.005 150);
-  --card: oklch(0.99 0.004 90);
+  --card: oklch(1 0 0);
   --card-foreground: oklch(0.206 0.005 150);
   --popover: oklch(0.99 0.004 90);
   --popover-foreground: oklch(0.206 0.005 150);
   --primary: oklch(0.513 0.085 161);
   --primary-foreground: oklch(0.98 0.004 90);
-  --secondary: oklch(0.925 0.008 90);
+  --secondary: oklch(0.945 0.007 150);
   --secondary-foreground: oklch(0.206 0.005 150);
-  --muted: oklch(0.925 0.008 90);
-  --muted-foreground: oklch(0.48 0.008 140);
+  --muted: oklch(0.952 0.004 100);
+  --muted-foreground: oklch(0.46 0.012 150);
   --accent: oklch(0.693 0.126 69);
   --accent-foreground: oklch(0.206 0.005 150);
   --destructive: oklch(0.55 0.19 27);
   --destructive-foreground: oklch(0.98 0.004 90);
-  --border: oklch(0.206 0.005 150 / 14%);
+  --border: oklch(0.206 0.005 150 / 10%);
   --input: oklch(0.206 0.005 150 / 18%);
   --ring: oklch(0.513 0.085 161);
   --chart-1: oklch(0.513 0.085 161);
@@ -92,7 +92,7 @@
   --chart-3: oklch(0.206 0.005 150);
   --chart-4: oklch(0.48 0.008 140);
   --chart-5: oklch(0.925 0.008 90);
-  --sidebar: oklch(0.962 0.006 90);
+  --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.206 0.005 150);
   --sidebar-primary: oklch(0.513 0.085 161);
   --sidebar-primary-foreground: oklch(0.98 0.004 90);
@@ -101,7 +101,6 @@
   --sidebar-border: oklch(0.206 0.005 150 / 14%);
   --sidebar-ring: oklch(0.513 0.085 161);
 }
-
 
 .dark {
   --background: oklch(0.129 0.042 264.695);
@@ -148,6 +147,8 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    margin: 0;
+    text-rendering: optimizeLegibility;
   }
 
   h1,
@@ -156,6 +157,32 @@
   h4 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;
+  }
+
+  button:not(:disabled),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :where(a, button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  ::selection {
+    background: oklch(0.513 0.085 161 / 20%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -169,3 +196,58 @@
   );
 }
 
+/* Keep editable controls readable without triggering iOS's focus zoom. */
+@media (max-width: 1023px) {
+  html {
+    scroll-padding-top: 16px;
+    scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Give the receipt preview real room on short phones held sideways. */
+@media (max-width: 1023px) and (max-height: 500px) and (orientation: landscape) {
+  .capture-header {
+    padding-block: 8px;
+  }
+  .capture-header p {
+    display: none;
+  }
+  .capture-content {
+    padding-top: 12px;
+  }
+  .capture-toolbar {
+    padding-top: 8px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .capture-toolbar > button {
+    min-height: 44px;
+    flex-direction: row;
+    gap: 8px;
+  }
+  .capture-preview[data-camera-active="true"] {
+    height: calc(100svh - 164px - env(safe-area-inset-bottom));
+    min-height: 128px;
+  }
+  .capture-video {
+    width: calc(100% - 80px);
+    height: 100%;
+  }
+  .capture-shutter {
+    inset: 0 0 0 auto;
+    width: 80px;
+    padding: 0;
+    align-items: center;
+  }
+  .capture-close {
+    top: 8px;
+    right: 88px;
+  }
+  .capture-guide {
+    inset: 12px 92px 12px 12px;
+  }
+}

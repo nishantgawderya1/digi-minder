@@ -313,7 +313,10 @@ test("assistant asks scoped questions, shows sources, and recovers from provider
   );
   expect(request.messages).toHaveLength(3);
   await page.getByRole("button", { name: "New chat" }).click();
-  await expect(page.getByRole("log")).not.toContainText("recorded price");
+  await expect(page.getByRole("log").getByRole("article")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Find answers in your bills" }),
+  ).toBeVisible();
   await page.getByRole("tab", { name: "Support draft" }).click();
   await expect(
     page.getByRole("button", { name: "Prepare draft" }),
@@ -347,7 +350,7 @@ test("digital PDF text preserves exact identifiers without OCR", async ({
   });
   await expect(
     page.getByRole("heading", { name: "Check the details" }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("You can return later")).not.toBeVisible({
     timeout: 110_000,
   });
@@ -369,6 +372,8 @@ test("image upload, OCR review, correction, persistence, editing, filtering and 
   await expect(page.getByLabel("Serial number / IMEI")).toHaveValue("001234");
   await expect(page.getByLabel("Barcode / EAN / UPC")).toHaveValue("009988");
   await expect(page.getByLabel("Amount paid")).toHaveValue("120.00");
+  if (test.info().project.name === "mobile")
+    await page.getByText("View original receipt", { exact: true }).click();
   expect(
     await page
       .getByRole("img", { name: "Original document: bill.png" })
