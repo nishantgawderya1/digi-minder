@@ -9,6 +9,7 @@ export function useDraftAutosave(id: string, initialRevision: number) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const running = useRef<Promise<void> | null>(null);
   const mounted = useRef(true);
+  const paused = useRef(false);
   const [status, setStatus] = useState("Saved");
   const [error, setError] = useState<string | null>(null);
   const set = (value: string) => {
@@ -17,6 +18,7 @@ export function useDraftAutosave(id: string, initialRevision: number) {
   const flush = useCallback(
     async function flush(): Promise<void> {
       clearTimeout(timer.current);
+      if (paused.current) return;
       if (running.current) {
         await running.current;
         if (Object.keys(pending.current).length) return flush();
@@ -78,12 +80,20 @@ export function useDraftAutosave(id: string, initialRevision: number) {
     pending.current = { ...pending.current, ...patch };
     clearTimeout(timer.current);
     set("Unsaved changes");
-    timer.current = setTimeout(() => void flush().catch(() => {}), 600);
+    if (!paused.current)
+      timer.current = setTimeout(() => void flush().catch(() => {}), 600);
+  }
+  async function pause() {
+    paused.current = true;
+    clearTimeout(timer.current);
+    await running.current?.catch(() => {});
+  }
+  function resume() {
+    paused.current = false;
+    void flush().catch(() => {});
   }
   async function discard() {
-    clearTimeout(timer.current);
-    pending.current = {};
-    await running.current?.catch(() => {});
+    await pause();
     pending.current = {};
     if (mounted.current) setError(null);
     set("Saved");
@@ -100,5 +110,5 @@ export function useDraftAutosave(id: string, initialRevision: number) {
     enableBeforeUnload: () =>
       !!running.current || !!Object.keys(pending.current).length,
   });
-  return { change, flush, discard, status, error };
+  return { change, flush, pause, resume, discard, status, error };
 }

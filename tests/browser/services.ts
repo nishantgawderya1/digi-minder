@@ -47,14 +47,11 @@ function recordReadingCall(name: string) {
   calls[name] = (calls[name] ?? 0) + 1;
   sessionStorage.setItem("reading-calls", JSON.stringify(calls));
 }
-export function unwrap<T>(
-  result: { ok: true; data: T } | { ok: false; error: string },
-) {
-  if (!result.ok) throw new Error(result.error);
-  return result.data;
-}
+export { unwrap } from "@/lib/service-result";
 export const loadVault = async () => {
   await simulateRequest("vault");
+  if (sessionStorage.getItem("vault-failure") === "true")
+    return { ok: false as const, error: "Vault temporarily unavailable" };
   const data = state();
   return ok({
     bills: data.bills,
@@ -64,7 +61,12 @@ export const loadVault = async () => {
 };
 export const loadBill = async ({ data }: { data: { id: string } }) => {
   const bill = state().bills.find((entry) => entry.id === data.id);
-  if (!bill) throw new Error("Bill not found");
+  if (!bill)
+    return {
+      ok: false as const,
+      error: "Bill not found.",
+      code: "NOT_FOUND" as const,
+    };
   return ok({
     bill,
     documents: [
@@ -79,7 +81,17 @@ export const loadBill = async ({ data }: { data: { id: string } }) => {
 };
 export const loadReview = async () => {
   const draft = state().draft;
-  if (!draft) throw new Error("Draft missing");
+  if (!draft) {
+    sessionStorage.setItem(
+      "missing-review-loads",
+      String(Number(sessionStorage.getItem("missing-review-loads") || 0) + 1),
+    );
+    return {
+      ok: false as const,
+      error: "Document not found.",
+      code: "NOT_FOUND" as const,
+    };
+  }
   return ok({
     ...draft,
     fields: { ...draft.fields, ...draft.draftPatch },
@@ -167,6 +179,7 @@ export const autosaveReview = async ({
 }: {
   data: { id: string; revision: number; patch: DraftPatch };
 }) => {
+  sessionStorage.setItem("autosave-started", "true");
   await new Promise((resolve) =>
     setTimeout(resolve, Number(sessionStorage.getItem("autosave-delay") || 0)),
   );
@@ -177,6 +190,7 @@ export const autosaveReview = async ({
     };
   const current = state();
   const draft = current.draft;
+  if (!draft) sessionStorage.setItem("autosave-after-delete", "true");
   if (!draft || (draft.revision ?? 0) !== data.revision)
     return {
       ok: false as const,
@@ -277,9 +291,14 @@ export const removeBill = async ({ data }: { data: { id: string } }) => {
   return ok(data);
 };
 export const removeDraft = async () => {
+  if (sessionStorage.getItem("delete-failure") === "true")
+    return { ok: false as const, error: "Deletion unavailable. Please retry." };
   const current = state();
   current.draft = null;
   persist(current);
+  await new Promise((resolve) =>
+    setTimeout(resolve, Number(sessionStorage.getItem("delete-delay") || 0)),
+  );
   return ok({ id });
 };
 export const getDocumentLink = async () => {

@@ -43,7 +43,7 @@ async function ownedDocument(userId: string, id: string) {
     .from(documents)
     .where(and(eq(documents.userId, userId), eq(documents.id, id)))
     .limit(1);
-  if (!document) throw new ServiceError("Document not found.");
+  if (!document) throw new ServiceError("Document not found.", "NOT_FOUND");
   return document;
 }
 const documentSummary = {
@@ -112,7 +112,7 @@ export async function loadBill(id: string) {
       .from(items)
       .where(and(eq(items.userId, userId), eq(items.id, id)))
       .limit(1);
-    if (!bill) throw new ServiceError("Bill not found.");
+    if (!bill) throw new ServiceError("Bill not found.", "NOT_FOUND");
     const files = await db
       .select(documentSummary)
       .from(documents)

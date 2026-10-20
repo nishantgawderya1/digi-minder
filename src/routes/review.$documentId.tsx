@@ -64,10 +64,13 @@ function ReviewEditor() {
     data.job &&
     ["queued", "reading", "extracting"].includes(data.job.status);
   useEffect(() => {
-    if (!processing) return;
-    const timer = setInterval(() => void router.invalidate(), 2500);
+    if (!processing || saving || reading) return;
+    const timer = setInterval(
+      () => void router.invalidate().catch(() => {}),
+      2500,
+    );
     return () => clearInterval(timer);
-  }, [processing, router]);
+  }, [processing, saving, reading, router]);
   const lowConfidence = data.pages.some(
     (page) => page.confidence !== null && Number(page.confidence) < 0.8,
   );
@@ -144,16 +147,26 @@ function ReviewEditor() {
     }
   };
   const discard = async () => {
+    if (saving || reading) return;
     if (!window.confirm("Delete this unfinished bill and its original file?"))
       return;
     setSaving(true);
     setError(null);
     try {
+      // Stop pending/in-flight autosaves before removing their document.
+      // Preserve the patch until deletion succeeds, so a failure loses no edits.
+      await autosave.pause();
       unwrap(await removeDraft({ data: { id: data.id } }));
       await autosave.discard();
-      await navigate({ to: "/vault" });
+      await navigate({ to: "/vault", replace: true });
+      router.clearCache({
+        filter: (match) =>
+          match.routeId === "/review/$documentId" &&
+          match.params.documentId === data.id,
+      });
       await router.invalidate();
     } catch (cause) {
+      autosave.resume();
       setError(
         cause instanceof Error ? cause.message : "Couldn't delete the draft.",
       );

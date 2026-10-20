@@ -11,12 +11,14 @@ import {
   type NotificationPreferences,
 } from "./notifications";
 import { serviceResult, ServiceError } from "./service-error.server";
+import { backgroundConfigured } from "./inngest.server";
 
 export const emailConfigured = () =>
   Boolean(
     process.env["RESEND_API_KEY"] &&
     process.env["REMINDER_FROM_EMAIL"] &&
-    process.env["APP_BASE_URL"],
+    process.env["APP_BASE_URL"] &&
+    backgroundConfigured(),
   );
 const preferenceColumns = {
   emailReminders: appUsers.emailReminders,

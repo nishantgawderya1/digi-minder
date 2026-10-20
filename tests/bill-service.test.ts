@@ -218,6 +218,54 @@ beforeEach(async () => {
 });
 
 describe("Private document lifecycle", () => {
+  it("returns a typed missing-record result after draft deletion and removes its dependent records", async () => {
+    await service.acceptLocalPage({
+      id,
+      pageIndex: 0,
+      text: "Receipt",
+      confidence: null,
+      source: "pdf-text",
+    });
+    expect((await service.removeDraft(id)).ok).toBe(true);
+    expect(await service.loadReview(id)).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    expect(await service.loadBill(id)).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    for (const table of ["documents", "document_pages", "document_jobs"])
+      expect((await pg.query(`SELECT * FROM ${table}`)).rows).toHaveLength(0);
+  });
+  it("keeps a draft and its corrections when original-file deletion fails", async () => {
+    await service.autosaveReview({
+      id,
+      revision: 0,
+      patch: { name: "Keep this correction" },
+    });
+    dependencies.deleteStoredFile.mockRejectedValueOnce(
+      new Error("storage unavailable"),
+    );
+    expect((await service.removeDraft(id)).ok).toBe(false);
+    const review = await service.loadReview(id);
+    expect(review.ok && review.data.fields.name).toBe("Keep this correction");
+  });
+  it("does not advertise or enable email delivery without a configured scheduler", async () => {
+    dependencies.backgroundConfigured.mockReturnValue(false);
+    const notices = await loadNotifications();
+    expect(notices.ok && notices.data.emailConfigured).toBe(false);
+    expect(
+      (
+        await saveNotificationPreferences({
+          emailReminders: true,
+          timezone: "UTC",
+          reminderHour: 9,
+        })
+      ).ok,
+    ).toBe(false);
+    expect(dependencies.clerkGetUser).not.toHaveBeenCalled();
+  });
   it("stores embedded PDF text without inventing OCR confidence", async () => {
     expect(
       (

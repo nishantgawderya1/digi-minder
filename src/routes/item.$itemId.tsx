@@ -55,6 +55,7 @@ function ItemScreen() {
     }
   }
   async function remove() {
+    if (busy) return;
     if (
       !window.confirm(
         `Delete "${bill.name}" and its original documents? This cannot be undone.`,
@@ -65,7 +66,11 @@ function ItemScreen() {
     setError(null);
     try {
       unwrap(await removeBill({ data: { id: bill.id } }));
-      await navigate({ to: "/vault" });
+      await navigate({ to: "/vault", replace: true });
+      router.clearCache({
+        filter: (match) =>
+          match.routeId === "/item/$itemId" && match.params.itemId === bill.id,
+      });
       await router.invalidate();
     } catch (cause) {
       setError(

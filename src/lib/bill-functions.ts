@@ -115,9 +115,4 @@ export const getDocumentLink = createServerFn({ method: "GET" })
     ),
   );
 
-export function unwrap<T>(
-  result: { ok: true; data: T } | { ok: false; error: string },
-): T {
-  if (!result.ok) throw new Error(result.error);
-  return result.data;
-}
+export { unwrap } from "./service-result";
