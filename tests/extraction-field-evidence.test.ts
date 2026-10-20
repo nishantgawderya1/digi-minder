@@ -93,6 +93,56 @@ Return window: 30 days`;
     ).toBe(false);
     expect(supportsProductToken("1", "Acme Phone A14")).toBe(false);
   });
+
+  it.each([
+    ["25/07/2021", "25/07/2021 16:29:12"],
+    ["11/12/2022", "11/12/2022 12h42"],
+    ["06/02/18", "06/02/18"],
+    ["25/07/2021", "0009 002 000289 25/07/2021 16:29:12"],
+    [
+      "11/12/2022",
+      "Maison Jeanne dArc, Place de Gaulle          11/12/2022 12h42",
+    ],
+  ])(
+    "accepts a unique unlabeled receipt timestamp/date: %s",
+    (token, receipt) => {
+      expect(supportsFieldRole("purchaseDate", token, receipt, token)).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each([
+    "Date: unreadable\n25/07/2021 16:29:12",
+    "Invoice Date: unreadable\n25/07/2021 16:29:12",
+    "Date of birth: 25/07/2021",
+    "DOB: 25/07/2021",
+    "Order date: 25/07/2021",
+    "Payment date: 25/07/2021",
+    "Manufacturing date: 25/07/2021",
+    "Manufacture date: 25/07/2021",
+    "Manufactured date: 25/07/2021",
+    "Date of Manufacture: 25/07/2021",
+    "Mfg Date: 25/07/2021",
+    "Mfg. Date: 25/07/2021",
+    "Date of Order: 25/07/2021",
+    "Date Due: 25/07/2021",
+    "Order date: 25/07/2021\n25/07/2021 16:29:12",
+    "Delivery 25/07/2021 16:29:12",
+    "https://example.test/bills/25/07/2021",
+    "Returns valid from 25/07/2021",
+    "0009 002 000289 25/07/2021",
+    "Birthday promotion on 25/07/2021 16:29:12",
+    "Customer references 25/07/2021 16:29:12",
+    "25/07/2021 16:29:12\n26/07/2021 12:00",
+  ])(
+    "does not turn a competing or incidental date into an unlabeled purchase date",
+    (receipt) => {
+      expect(
+        supportsFieldRole("purchaseDate", "25/07/2021", receipt, "25/07/2021"),
+      ).toBe(false);
+    },
+  );
 });
 
 describe("Source-backed maker identification", () => {

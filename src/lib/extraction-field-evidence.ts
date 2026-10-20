@@ -1,4 +1,5 @@
 import { normalizeSource } from "./extraction-source";
+import { findReceiptDates } from "./receipt-dates";
 
 type Role =
   | "invoiceNumber"
@@ -18,16 +19,22 @@ type Role =
 const definitions: { pattern: string; role: Role; priority?: number }[] = [
   {
     pattern:
-      "(?:grand\\s+total|net\\s+payable|total\\s+payable|invoice\\s+(?:total|value)|bill\\s+total)",
+      "(?:grand\\s+total|net\\s+payable|total\\s+payable|invoice\\s+(?:total|value)|bill\\s+total|total\\s+[aà]\\s+payer)",
     role: "purchasePrice",
     priority: 4,
   },
   {
-    pattern: "(?:total\\s+amount(?:\\s+paid)?|amount\\s+paid|net\\s+amount)",
+    pattern:
+      "(?:total\\s+amount(?:\\s+paid)?|amount\\s+paid|net\\s+amount|pay[ée])",
     role: "purchasePrice",
     priority: 3,
   },
   { pattern: "(?:total|amount\\s+due)", role: "purchasePrice", priority: 1 },
+  {
+    pattern:
+      "(?:(?:total\\s+)?(?:change|kembali(?:an)?)|cash(?:\\s+(?:tendered|received|payment|amount))?|tunai|tendered|(?:credit|debit)\\s+card|card\\s+(?:paid|payment|amount)|visa|mastercard|upi|deposit|advance|outstanding|balance(?:\\s+due)?|total\\s+(?:items?|quantity|qty))",
+    role: "other",
+  },
   {
     pattern:
       "(?:sub\\s*total|mrp|list\\s+price|unit\\s+price|rate|discount|tax(?:able\\s+(?:amount|value))?|[sic]gst|cess|balance|quantity|qty|hsn|sac)",
@@ -41,7 +48,7 @@ const definitions: { pattern: string; role: Role; priority?: number }[] = [
   },
   {
     pattern:
-      "(?:delivery|dispatch|shipping|shipped|order|due|manufactur(?:e|ed)|expiry|expiration)\\s+date",
+      "(?:(?:delivery|dispatch|shipping|shipped|order|due|payment|manufactur(?:e|ed|ing)|mfg\\.?|expiry|expiration)\\s+date|date\\s+(?:of\\s+(?:order|manufactur(?:e|ing)|birth)|due)|birth\\s+date|dob)",
     role: "other",
   },
   {
@@ -99,7 +106,10 @@ const definitions: { pattern: string; role: Role; priority?: number }[] = [
 
 const expressions = definitions.map((definition) => ({
   ...definition,
-  expression: new RegExp(`\\b(?:${definition.pattern})\\b[ \\t:#.]*`, "gi"),
+  expression: new RegExp(
+    `(?<![\\p{L}\\p{N}])(?:${definition.pattern})(?![\\p{L}\\p{N}])[ \\t:#.]*`,
+    "giu",
+  ),
 }));
 
 function labels(line: string) {
@@ -132,6 +142,52 @@ function labels(line: string) {
   return selected;
 }
 
+/** Preserve monetary label boundaries before parsing a cell's whole value. */
+export function receiptAmountCells(text: string) {
+  return text.split(/\r?\n/).flatMap((line, lineIndex, lines) => {
+    const rowLabels = labels(line);
+    return rowLabels.flatMap((label, labelIndex) => {
+      const printed = line.slice(label.index, label.end).trim();
+      const role =
+        label.role === "purchasePrice"
+          ? "purchasePrice"
+          : /^(?:total\s+)?(?:change|kembali(?:an)?)\b/i.test(printed)
+            ? "change"
+            : /^(?:cash|tunai|tendered)\b/i.test(printed)
+              ? "cash"
+              : /^(?:(?:credit|debit)\s+card|card|visa|mastercard|upi|deposit|advance|outstanding|balance)\b/i.test(
+                    printed,
+                  )
+                ? "otherTender"
+                : null;
+      if (!role) return [];
+      // Words inside a product description are not a summary-row label.
+      if (
+        label.index > 0 &&
+        !/(?:\t|\|| {2,})\s*$/.test(line.slice(0, label.index)) &&
+        !rowLabels.some((previous) => previous.end <= label.index) &&
+        !/^\s*\d+\s+(?:articles?|article\(s\)|items?|item\(s\))\s*$/i.test(
+          line.slice(0, label.index),
+        )
+      )
+        return [];
+      let raw = line.slice(label.end, rowLabels[labelIndex + 1]?.index).trim();
+      let quote = line.trim();
+      if (!raw && rowLabels.length === 1) {
+        let nextIndex = lineIndex + 1;
+        while (nextIndex <= lineIndex + 3 && lines[nextIndex]?.trim() === "")
+          nextIndex++;
+        const next = lines[nextIndex]?.trim();
+        if (nextIndex <= lineIndex + 3 && next && !labels(next).length) {
+          raw = next;
+          quote += `\n${lines.slice(lineIndex + 1, nextIndex + 1).join("\n")}`;
+        }
+      }
+      return [{ role, raw, priority: label.priority, quote }];
+    });
+  });
+}
+
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function occurrences(value: string, text: string) {
@@ -158,15 +214,28 @@ function occurrences(value: string, text: string) {
         );
         let label = preceding.at(-1);
         if (!label && lineIndex > 0) {
-          const previous = lines[lineIndex - 1]!;
+          let previousIndex = lineIndex - 1;
+          while (
+            previousIndex >= Math.max(0, lineIndex - 3) &&
+            !lines[previousIndex]!.trim()
+          )
+            previousIndex--;
+          const previous = lines[previousIndex] ?? "";
           const previousLabels = labels(previous);
           const only = previousLabels[0];
           if (
             previousLabels.length === 1 &&
             only &&
+            (previousIndex === lineIndex - 1 ||
+              only.role === "purchasePrice") &&
             !previous.slice(only.end).trim() &&
             // A document title such as "Tax Invoice" is not an ID label.
-            (only.index === 0 || /[:#]\s*$/.test(previous))
+            (only.index === 0 ||
+              /[:#]\s*$/.test(previous) ||
+              (only.role === "purchasePrice" &&
+                /^\s*\d+\s+(?:articles?|article\(s\)|items?|item\(s\))\s*$/i.test(
+                  previous.slice(0, only.index),
+                )))
           )
             label = only;
         }
@@ -191,6 +260,51 @@ export function supportsFieldRole(
       return false;
   }
   const matches = occurrences(token, text);
+  if (
+    role === "purchaseDate" &&
+    !text
+      .split(/\r?\n/)
+      .some((line) =>
+        labels(line).some(
+          (label) =>
+            label.role === "purchaseDate" ||
+            (label.role === "other" &&
+              /\b(?:date|dob)\b/i.test(line.slice(label.index, label.end))),
+        ),
+      )
+  ) {
+    const validDates = findReceiptDates(text);
+    const distinct = new Set(validDates.map(({ value }) => value));
+    const requested = findReceiptDates(token)[0];
+    if (requested && distinct.size === 1 && distinct.has(requested.value))
+      return matches.some(({ label, line }) => {
+        if (label) return false;
+        // Timestamped sale headers and date-only rows are useful even without
+        // "Date:". URLs, customer DOB and incidental footer dates are not.
+        if (
+          /https?:|www\.|\b(?:birth|dob|order|delivery|shipping|due|expir|manufactur)/i.test(
+            line,
+          )
+        )
+          return false;
+        const dateIndex = line.indexOf(token);
+        const prefix = line.slice(0, dateIndex);
+        const suffix = line.slice(dateIndex + token.length).trim();
+        const timestamp =
+          /^(?:[01]?\d|2[0-3])(?::[0-5]\d(?::[0-5]\d)?|h[0-5]\d)(?:\s*[ap]m)?$/i.test(
+            suffix,
+          );
+        const terminalReferences = /^\d{1,12}(?:[ \t]+\d{1,12}){0,3}$/.test(
+          prefix.trim(),
+        );
+        const separateCell =
+          prefix.length <= 180 && /(?:\t| {2,})$/.test(prefix);
+        return (
+          (!prefix.trim() && !suffix) ||
+          (timestamp && (!prefix.trim() || terminalReferences || separateCell))
+        );
+      });
+  }
   const preferred = Math.max(
     1,
     ...text.split(/\r?\n/).flatMap((line) =>

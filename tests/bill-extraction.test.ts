@@ -87,8 +87,8 @@ Invoice Date: 02/10/2026`;
       serialNumber: null,
       modelNumber: null,
       barcode: null,
-      purchasePrice: null,
-      purchaseDate: null,
+      purchasePrice: "1180.00",
+      purchaseDate: "2026-10-02",
     });
     expect(result.fieldIssues).toMatchObject({
       retailer: "rejected",
@@ -97,9 +97,11 @@ Invoice Date: 02/10/2026`;
       serialNumber: "rejected",
       modelNumber: "rejected",
       barcode: "rejected",
-      purchasePrice: "rejected",
-      purchaseDate: "rejected",
     });
+    expect(result.evidence.purchasePrice).toBe("Grand Total INR 1180.00");
+    expect(result.evidence.purchaseDate).toBe("Invoice Date: 02/10/2026");
+    expect(result.fieldIssues.purchasePrice).toBeUndefined();
+    expect(result.fieldIssues.purchaseDate).toBeUndefined();
     const corrected = validateExtraction(
       {
         fields: {
@@ -278,7 +280,7 @@ Invoice Date: 02/10/2026`;
     });
     expect(result.fields).not.toHaveProperty("userId");
   });
-  it("does not accept arbitrary monetary values or impossible dates", () => {
+  it("replaces unsupported monetary values and impossible dates only with verified source facts", () => {
     const value = candidate();
     expect(
       validateExtraction(
@@ -291,8 +293,133 @@ Invoice Date: 02/10/2026`;
         },
         text + "\n31/02/2026",
       ).fields,
+    ).toMatchObject({ purchasePrice: "12999.00", purchaseDate: "2026-10-02" });
+    expect(
+      validateExtraction(
+        {
+          fields: { purchasePrice: "5.00", purchaseDate: "2026-02-01" },
+          evidence: {
+            purchasePrice: "MRP 5.00",
+            purchaseDate: "Date: 31/02/2026",
+          },
+        },
+        "MRP 5.00\nDate: 31/02/2026",
+      ).fields,
     ).toMatchObject({ purchasePrice: null, purchaseDate: null });
   });
+  it.each([
+    ["48.000", "48000.00", "TUNAI 50.000\nKEMBALI 2.000"],
+    ["EUR 12,50", "12.50", ""],
+    ["INR 1,18,000.00", "118000.00", ""],
+  ])(
+    "validates complete printed monetary tokens: %s",
+    (printed, expected, extra) => {
+      const quote = `Grand Total ${printed}`;
+      const result = validateExtraction(
+        {
+          fields: { purchasePrice: expected },
+          evidence: { purchasePrice: quote },
+        },
+        `${quote}\n${extra}`,
+      );
+      expect(result.fields.purchasePrice).toBe(expected);
+    },
+  );
+  it("rejects a plausible AI price when shifted OCR puts cash under Total", () => {
+    const source = "Subtotal: 20,000\nTotal: 100,000\nCash:\n80,000\nCHANGE:";
+    const result = validateExtraction(
+      {
+        fields: { purchasePrice: "100000.00" },
+        evidence: { purchasePrice: "Total: 100,000" },
+      },
+      source,
+    );
+    expect(result.fields.purchasePrice).toBeNull();
+    expect(result.fieldIssues.purchasePrice).toBe("rejected");
+  });
+  it("recovers omitted real grocery receipt total/date without assigning a product brand", () => {
+    const source =
+      "5 ARTICLE(S) TOTAL À PAYER 12.50e\nCB EMV SANS CONTACT EUR 12.50e\nTotaux: 0.64 11.86\n0009 002 000289 25/07/2021 16:29:12";
+    const result = validateExtraction(
+      { productCount: 5, fields: {}, evidence: {} },
+      source,
+    );
+    expect(result.fields).toMatchObject({
+      name: "",
+      brand: null,
+      purchasePrice: "12.50",
+      purchaseDate: "2021-07-25",
+    });
+    expect(result.evidence.purchasePrice).toBe(
+      "5 ARTICLE(S) TOTAL À PAYER 12.50e",
+    );
+    expect(result.evidence.purchaseDate).toBe(
+      "0009 002 000289 25/07/2021 16:29:12",
+    );
+    expect(result.fieldIssues.purchasePrice).toBeUndefined();
+    expect(result.fieldIssues.purchaseDate).toBeUndefined();
+  });
+  it("requires literal Rp evidence to accept IDR and does not infer currency from language", () => {
+    expect(
+      validateExtraction(
+        { fields: { currency: "IDR" }, evidence: { currency: "Rp. 0" } },
+        "Kembalian Rp. 0",
+      ).fields.currency,
+    ).toBe("IDR");
+    expect(
+      validateExtraction(
+        { fields: { currency: "IDR" }, evidence: { currency: "Tunai" } },
+        "Tunai 50000",
+      ).evidence.currency,
+    ).toBeUndefined();
+  });
+  it("does not recover totals or dates across an unresolved multi-invoice source", () => {
+    const source =
+      "Invoice Number GOODS0001\nGrand Total 100.00\nDate: 01/10/2026\nInvoice Number OTHER0002\nGrand Total 200.00\nDate: 02/10/2026";
+    expect(
+      validateExtraction({ fields: {}, evidence: {} }, source).fields,
+    ).toMatchObject({ purchasePrice: null, purchaseDate: null });
+  });
+  it.each([
+    "Payment date",
+    "Manufacturing date",
+    "Manufacture date",
+    "Manufactured date",
+    "Date of Manufacture",
+    "Mfg Date",
+    "Mfg. Date",
+    "Date of Order",
+    "Date Due",
+  ])("never recovers %s as a missing purchase date", (label) => {
+    const source = `${label}: 25/07/2021`;
+    for (const fields of [{}, { purchaseDate: "2021-07-25" }]) {
+      const result = validateExtraction(
+        { fields, evidence: { purchaseDate: source } },
+        source,
+      );
+      expect(result.fields.purchaseDate).toBeNull();
+      expect(result.evidence.purchaseDate).toBeUndefined();
+    }
+  });
+  it.each([
+    ["Date: 06/02/18", "2018-02-06"],
+    ["Invoice date: 2018/02/06", "2018-02-06"],
+    ["Invoice date: 06-Feb-2018", "2018-02-06"],
+    ["25/07/2021 16:29:12", "2021-07-25"],
+    ["11/12/2022 12h42", "2022-12-11"],
+  ])(
+    "normalizes real receipt date formats from exact evidence: %s",
+    (source, expected) => {
+      const result = validateExtraction(
+        {
+          fields: { purchaseDate: expected },
+          evidence: { purchaseDate: source },
+        },
+        source,
+      );
+      expect(result.fields.purchaseDate).toBe(expected);
+    },
+  );
 });
 describe("NVIDIA LLM boundary", () => {
   it("uses the supplied model with JSON mode and never streams reasoning into fields", async () => {

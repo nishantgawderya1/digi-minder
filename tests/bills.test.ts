@@ -127,7 +127,8 @@ describe("NVIDIA OCR adapter", () => {
         },
       ],
     });
-    expect(result.text).toBe("Receipt\nTotal: 120.00");
+    // The 50px gap is five times the 10px font height: distinct columns.
+    expect(result.text).toBe("Receipt\nTotal:\t120.00");
     expect(result.confidence).toBeCloseTo(0.9);
     expect(() => readOcrResponse({ text: "invented format" })).toThrow();
   });

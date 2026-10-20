@@ -1,5 +1,9 @@
-import { format, isValid, parse } from "date-fns";
 import { z } from "zod";
+import { reconstructOcrText } from "./ocr-layout";
+import { findReceiptDates, readReceiptDate } from "./receipt-dates";
+import { supportsFieldRole } from "./extraction-field-evidence";
+import { recoverPurchaseAmount } from "./receipt-amounts";
+export { readReceiptDate } from "./receipt-dates";
 import {
   deadlineFromDuration,
   emptyBillFields,
@@ -26,72 +30,16 @@ export function readOcrResponse(payload: unknown) {
   const detections = parsed.data
     .flatMap((page) => page.text_detections)
     .filter((d) => d.text_prediction.text.trim());
-  const positioned = parsed.data
-    .flatMap((page, pageIndex) =>
-      page.text_detections
-        .filter((d) => d.text_prediction.text.trim())
-        .map((d, order) => {
-          const points = d.bounding_box?.points;
-          const top = points ? Math.min(...points.map((p) => p.y)) : order;
-          const bottom = points ? Math.max(...points.map((p) => p.y)) : order;
-          return {
-            text: d.text_prediction.text.trim(),
-            page: pageIndex,
-            x: points ? Math.min(...points.map((p) => p.x)) : 0,
-            right: points ? Math.max(...points.map((p) => p.x)) : 0,
-            y: (top + bottom) / 2,
-            height: bottom - top,
-          };
-        }),
-    )
-    .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
-  const rows: {
-    page: number;
-    y: number;
-    height: number;
-    words: typeof positioned;
-  }[] = [];
-  for (const word of positioned) {
-    const row = rows.find(
-      (r) =>
-        r.page === word.page &&
-        Math.abs(r.y - word.y) <= Math.max(r.height, word.height) * 0.45,
-    );
-    if (row) row.words.push(word);
-    else
-      rows.push({
-        page: word.page,
-        y: word.y,
-        height: word.height,
-        words: [word],
-      });
-  }
-  const text = rows
-    .map((row, index) => {
-      const words = row.words.sort((a, b) => a.x - b.x);
-      const line = words
-        .map((word, wordIndex) => {
-          const previous = words[wordIndex - 1];
-          if (!previous) return word.text;
-          const characterWidth = Math.max(
-            (previous.right - previous.x) / previous.text.length,
-            (word.right - word.x) / word.text.length,
-          );
-          // Keep clear table columns distinct without splitting ordinary word gaps.
-          const columnGap = Math.max(row.height, word.height) * 8;
-          const separator =
-            word.x - previous.right > Math.max(columnGap, characterWidth * 12)
-              ? "\t"
-              : " ";
-          return separator + word.text;
-        })
-        .join("");
-      return (
-        (index > 0 && rows[index - 1]!.page !== row.page ? "\n" : "") + line
-      );
-    })
-    .join("\n")
-    .slice(0, 100_000);
+  const text = reconstructOcrText(
+    parsed.data.map((page) =>
+      page.text_detections.map((detection) => ({
+        text: detection.text_prediction.text,
+        ...(detection.bounding_box
+          ? { points: detection.bounding_box.points }
+          : {}),
+      })),
+    ),
+  );
   const scores = detections.flatMap((d) =>
     d.text_prediction.confidence === undefined
       ? []
@@ -103,34 +51,6 @@ export function readOcrResponse(payload: unknown) {
       ? scores.reduce((sum, score) => sum + score, 0) / scores.length
       : null,
   };
-}
-
-export function readReceiptDate(value: string | null) {
-  if (!value) return null;
-  const clean = value.trim().replace(/(\d)(st|nd|rd|th)\b/gi, "$1");
-  // Day-first numeric dates follow the app's Indian receipt locale. Review remains editable.
-  for (const pattern of [
-    "yyyy-MM-dd",
-    "dd/MM/yyyy",
-    "d/M/yyyy",
-    "dd-MM-yyyy",
-    "d-M-yyyy",
-    "dd.MM.yyyy",
-    "d MMM yyyy",
-    "dd MMM yyyy",
-    "d MMMM yyyy",
-    "MMM d, yyyy",
-    "MM/dd/yyyy",
-  ]) {
-    const parsed = parse(clean, pattern, new Date(2000, 0, 1));
-    if (
-      isValid(parsed) &&
-      parsed.getFullYear() >= 1900 &&
-      parsed.getFullYear() <= 2200
-    )
-      return format(parsed, "yyyy-MM-dd");
-  }
-  return null;
 }
 
 type ExtractedField =
@@ -357,22 +277,29 @@ export function extractBillFields(text: string): BillFields {
   fields.serialNumber = valueFor("serialNumber", literal());
   fields.modelNumber = valueFor("modelNumber", literal());
   fields.barcode = valueFor("barcode", literal());
-  fields.purchaseDate = valueFor("purchaseDate", readReceiptDate);
-  fields.purchasePrice = valueFor("purchasePrice", (amount) => {
-    const numeric = amount
-      .replace(/(?:INR|USD|EUR|GBP|Rs\.?|₹|\$|€|£)/gi, "")
-      .trim()
-      .replace(/,/g, "");
-    return /^\d{1,10}(\.\d{1,2})?$/.test(numeric)
-      ? Number(numeric).toFixed(2)
+  fields.purchaseDate = valueFor("purchaseDate", (raw) => {
+    const dates = findReceiptDates(raw);
+    const distinct = [...new Set(dates.map(({ value }) => value))];
+    return distinct.length === 1 &&
+      dates.some(({ token }) => supportsFieldRole("purchaseDate", token, text))
+      ? distinct[0]!
       : null;
   });
+  if (!candidates.some(({ field }) => field === "purchaseDate")) {
+    const dates = findReceiptDates(text).filter(({ token }) =>
+      supportsFieldRole("purchaseDate", token, text),
+    );
+    const distinct = [...new Set(dates.map(({ value }) => value))];
+    if (distinct.length === 1) fields.purchaseDate = distinct[0]!;
+  }
+  fields.purchasePrice = recoverPurchaseAmount(text)?.value ?? null;
   const currency = text
-    .match(/\b(INR|USD|EUR|GBP|AUD|CAD|AED)\b/i)?.[1]
+    .match(/\b(INR|USD|EUR|GBP|AUD|CAD|AED|IDR|MYR|SGD)\b/i)?.[1]
     ?.toUpperCase();
   if (currency) fields.currency = currency;
   else if (text.includes("€")) fields.currency = "EUR";
   else if (text.includes("£")) fields.currency = "GBP";
+  else if (/\bRp\.?\s*\d/i.test(text)) fields.currency = "IDR";
   fields.warrantyMonths = valueFor("warrantyMonths", (value) => {
     const warranty = value.match(/^(\d{1,3})\s*(months?|years?)\b/i);
     if (!warranty?.[1] || !warranty[2]) return null;

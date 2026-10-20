@@ -5,7 +5,12 @@ import {
   emptyBillFields,
   type BillFields,
 } from "./bills";
-import { extractBillFields, readReceiptDate } from "./ocr";
+import { extractBillFields } from "./ocr";
+import { findReceiptDates } from "./receipt-dates";
+import {
+  recoverPurchaseAmount,
+  verifiedPurchaseAmount,
+} from "./receipt-amounts";
 import { nvidiaJson } from "./nvidia.server";
 import { ServiceError } from "./service-error.server";
 import { nvidiaLlmConfig } from "./nvidia-config.server";
@@ -29,7 +34,7 @@ import {
 } from "./extraction-field-evidence";
 
 const MAX_TEXT = 60_000;
-export const EXTRACTION_VERSION = 3;
+export const EXTRACTION_VERSION = 4;
 type FieldKey = Exclude<keyof BillFields, "reminderDays">;
 type FieldIssue =
   "missing" | "absent" | "ambiguous" | "unreadable" | "rejected";
@@ -60,14 +65,7 @@ function containsSeparateInvoices(text: string) {
 }
 
 function dateInEvidence(evidence: string) {
-  return [
-    ...evidence.matchAll(
-      /\b(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})\b/g,
-    ),
-  ].flatMap(([token]) => {
-    const value = readReceiptDate(token);
-    return value ? [{ token, value }] : [];
-  });
+  return findReceiptDates(evidence);
 }
 
 export function validateExtraction(
@@ -150,14 +148,7 @@ export function validateExtraction(
       ) {
         continue;
       }
-      const prices = quote.match(/\d[\d,]*(?:\.\d{1,2})?/g) ?? [];
-      if (
-        !prices.some(
-          (price) =>
-            Number(price.replace(/,/g, "")) === Number(amount) &&
-            supportsFieldRole("purchasePrice", price, source.text, quote),
-        )
-      ) {
+      if (!verifiedPurchaseAmount(amount, quote, source.text)) {
         continue;
       }
       value = Number(amount).toFixed(2);
@@ -187,6 +178,7 @@ export function validateExtraction(
         USD: /\bUSD\b|US\$/i,
         EUR: /\bEUR\b|€/i,
         GBP: /\bGBP\b|£/i,
+        IDR: /\bIDR\b|\bRp\.?(?=\s|\d|$)/i,
       };
       if (
         typeof value !== "string" ||
@@ -248,6 +240,40 @@ export function validateExtraction(
     fields = { ...fields, [key]: valid.data };
     evidence[key] = quote;
     delete fieldIssues[key];
+  }
+  if (!source.ambiguous && !fields.purchasePrice) {
+    const recovered = recoverPurchaseAmount(source.text);
+    if (recovered) {
+      fields.purchasePrice = recovered.value;
+      evidence["purchasePrice"] = recovered.quote;
+      delete fieldIssues.purchasePrice;
+    }
+  }
+  if (!source.ambiguous && !fields.purchaseDate) {
+    const dates = findReceiptDates(source.text).filter(({ token }) =>
+      supportsFieldRole("purchaseDate", token, source.text),
+    );
+    if (new Set(dates.map(({ value }) => value)).size === 1) {
+      const recovered = dates[0]!;
+      const quote = source.text
+        .split(/\r?\n/)
+        .find(
+          (line) =>
+            line.includes(recovered.token) &&
+            line.length <= 2500 &&
+            supportsFieldRole(
+              "purchaseDate",
+              recovered.token,
+              source.text,
+              line,
+            ),
+        );
+      if (quote) {
+        fields.purchaseDate = recovered.value;
+        evidence["purchaseDate"] = quote.trim();
+        delete fieldIssues.purchaseDate;
+      }
+    }
   }
   if (!fields.brand && !source.ambiguous && !multipleProducts) {
     const recovered = recoverLabeledBrand(source.text);
@@ -318,6 +344,7 @@ Never confuse serial, barcode, invoice, order, GST or model IDs.
 Do not invent absent serials or decode barcode symbols.
 purchasePrice is final payable total with tax, not MRP/subtotal/unit price/tax/discount/installment: a decimal string without commas/symbols.
 For price evidence quote the final-total label and actual amount token as printed, even if it is an integer; never change quote decimals. Do not select an earlier generic Total when a final Grand Total/Net Payable is printed.
+Keep cash tender, change, and item counts out of purchasePrice. A contradictory or shifted total/cash/change row is insufficient evidence: leave purchasePrice null rather than guessing. Respect printed currency and decimal/grouping separators.
 currency is explicit ISO currency or null. Dates are YYYY-MM-DD, numeric input is day/month/year;
 purchaseDate is invoice/receipt/purchase date, never order/delivery/manufacturing/payment-due date. Quote the printed date label and EXACT token, preserving zeroes and separators. Warranty/return durations require their printed policy labels and numbers/units: integer months/days.
 Do not infer policies or today's date; expiry dates stay null unless printed.

@@ -62,7 +62,7 @@ vi.mock("@/lib/assistant-model.server", () => ({
 }));
 vi.mock("@/lib/bill-extraction.server", () => ({
   extractBillWithAi: dependencies.extractBillWithAi,
-  EXTRACTION_VERSION: 3,
+  EXTRACTION_VERSION: 4,
 }));
 vi.mock("@/lib/storage.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/storage.server")>()),
@@ -579,7 +579,7 @@ describe("Private document lifecycle", () => {
       .from(schema.documents)
       .where(eq(schema.documents.id, id));
     expect(document?.extractedData?.["extraction"]).toMatchObject({
-      version: 3,
+      version: 4,
       attempts: 2,
       status: "complete",
     });
@@ -605,7 +605,7 @@ describe("Private document lifecycle", () => {
       .set({
         extractedData: {
           extraction: {
-            version: 3,
+            version: 4,
             attempts: 2,
             status: "complete",
             method: "labels",
@@ -674,7 +674,7 @@ describe("Private document lifecycle", () => {
       .from(schema.documents)
       .where(eq(schema.documents.id, id));
     expect(document?.extractedData?.["extraction"]).toMatchObject({
-      version: 3,
+      version: 4,
       attempts: 2,
     });
   });

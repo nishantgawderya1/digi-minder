@@ -18,7 +18,15 @@ export default defineConfig(({ mode }) => {
         server: { entry: "server" },
       }),
       nitro({
-        traceDeps: ["pdfjs-dist*", "tesseract.js*", "tesseract.js-core*"],
+        traceDeps: [
+          "pdfjs-dist*",
+          "tesseract.js*",
+          "tesseract.js-core*",
+          // Windows canvas needs its ICU data beside the native binary.
+          ...(process.platform === "win32"
+            ? [`@napi-rs/canvas-win32-${process.arch}-msvc*`]
+            : []),
+        ],
         vercel: { functionRules: { "/api/inngest": { maxDuration: 300 } } },
       }),
       react(),

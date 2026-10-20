@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readdir, readFile, realpath } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { PDFDocument } from "pdf-lib";
@@ -11,8 +11,12 @@ const root = await realpath(resolve(process.argv[2] || ".output/server"));
 const require = createRequire(join(root, "index.mjs"));
 async function packaged(name) {
   const path = await realpath(require.resolve(name));
+  const inside = relative(root, path);
   assert(
-    path.startsWith(`${root}/`),
+    inside &&
+      !isAbsolute(inside) &&
+      inside !== ".." &&
+      !inside.startsWith(`..${sep}`),
     `${name} is missing from the deployment artifact.`,
   );
   return path;
@@ -67,7 +71,7 @@ try {
   ctx.fillStyle = "white";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "black";
-  ctx.font = "36px sans-serif";
+  ctx.font = "36px Arial, sans-serif";
   ctx.fillText("Serial number: 001234", 40, 70);
   ctx.fillText("Total: INR 170.00", 40, 130);
   const { data } = await worker.recognize(canvas.toBuffer("image/png"));
