@@ -42,6 +42,11 @@ const state = (): State =>
 const persist = (value: State) =>
   sessionStorage.setItem("test-vault", JSON.stringify(value));
 const ok = <T>(data: T) => ({ ok: true as const, data });
+function recordReadingCall(name: string) {
+  const calls = JSON.parse(sessionStorage.getItem("reading-calls") || "{}");
+  calls[name] = (calls[name] ?? 0) + 1;
+  sessionStorage.setItem("reading-calls", JSON.stringify(calls));
+}
 export function unwrap<T>(
   result: { ok: true; data: T } | { ok: false; error: string },
 ) {
@@ -90,7 +95,8 @@ export const loadReview = async () => {
         ? { serialNumber: { quote: "Serial number: 001234", page: 0 } }
         : {}),
     job: draft.job ?? null,
-    backgroundAvailable: true,
+    backgroundAvailable:
+      sessionStorage.getItem("background-disabled") !== "true",
   });
 };
 export const beginUpload = async ({
@@ -152,7 +158,10 @@ async function runWorker() {
     prepared?.dispose();
   }
 }
-export const queueReading = async () => completeUpload();
+export const queueReading = async () => {
+  recordReadingCall("queue");
+  return completeUpload();
+};
 export const autosaveReview = async ({
   data,
 }: {
@@ -184,6 +193,7 @@ export const readDocumentPage = async ({
 }: {
   data: { pageIndex: number; imageDataUrl: string };
 }) => {
+  recordReadingCall("readPage");
   if (
     sessionStorage.getItem("ocr-failure") === "true" ||
     sessionStorage.getItem("ocr-unavailable") === "true"
@@ -192,6 +202,12 @@ export const readDocumentPage = async ({
   if (!/^data:image\/(?:jpeg|png);base64,/.test(data.imageDataUrl))
     throw new Error("Not a rasterized page");
   const current = state();
+  if (
+    current.draft!.pages.some(
+      (page) => page.pageIndex === data.pageIndex && page.status === "complete",
+    )
+  )
+    return ok({ pageIndex: data.pageIndex });
   current.draft!.pages.push({
     pageIndex: data.pageIndex,
     text: "Product name: Test lamp\nSerial number: 001234\nBarcode: 009988\nTotal: INR 120.00\nInvoice date: 01/10/2026",
@@ -207,6 +223,7 @@ export const readDocumentPage = async ({
   return ok({ pageIndex: data.pageIndex });
 };
 export const finishReading = async () => {
+  recordReadingCall("extract");
   const current = state();
   current.draft!.status = "review";
   current.draft!.fields = extractBillFields(
@@ -265,4 +282,7 @@ export const removeDraft = async () => {
   persist(current);
   return ok({ id });
 };
-export const getDocumentLink = async () => ok({ url: picture });
+export const getDocumentLink = async () => {
+  recordReadingCall("original");
+  return ok({ url: state().draft?.previewUrl ?? picture });
+};

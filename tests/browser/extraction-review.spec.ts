@@ -26,13 +26,26 @@ const fieldIssues: FieldIssues = {
 
 async function openReview(
   page: Page,
-  options: { processing?: boolean; issues?: FieldIssues } = {},
+  options: {
+    processing?: boolean;
+    issues?: FieldIssues;
+    backgroundAvailable?: boolean;
+  } = {},
 ) {
   if (test.info().project.name === "mobile")
     await page.setViewportSize({ width: 320, height: 700 });
   await page.addInitScript(
-    ({ documentId, picture, fields, fieldIssues, processing }) => {
+    ({
+      documentId,
+      picture,
+      fields,
+      fieldIssues,
+      processing,
+      backgroundAvailable,
+    }) => {
       if (sessionStorage.getItem("test-vault")) return;
+      if (!backgroundAvailable)
+        sessionStorage.setItem("background-disabled", "true");
       sessionStorage.setItem(
         "test-vault",
         JSON.stringify({
@@ -73,6 +86,7 @@ async function openReview(
       fields,
       fieldIssues: options.issues ?? fieldIssues,
       processing: options.processing ?? false,
+      backgroundAvailable: options.backgroundAvailable ?? true,
     },
   );
   await page.goto(`/review/${documentId}`);
@@ -276,4 +290,83 @@ test("late background extraction fills untouched fields while preserving the use
   await expect(page.getByLabel("Model number", { exact: true })).toHaveValue(
     "LM-24",
   );
+});
+
+test("Retry reading processes a completed older bill inline when background jobs are unavailable", async ({
+  page,
+}) => {
+  await openReview(page, { backgroundAvailable: false });
+  await page.evaluate(() => {
+    const data = JSON.parse(sessionStorage.getItem("test-vault")!);
+    data.draft.fields.purchasePrice = "100000.00";
+    data.draft.pages[0].text =
+      "Product name: Reading lamp\nGrand Total INR 120.00\nInvoice Date: 01/10/2026";
+    data.draft.job = { status: "complete", completedPages: 1, error: null };
+    const canvas = document.createElement("canvas");
+    canvas.width = 100;
+    canvas.height = 100;
+    data.draft.previewUrl = canvas.toDataURL("image/png");
+    sessionStorage.setItem("test-vault", JSON.stringify(data));
+  });
+  await page.reload();
+  await expect(page.getByLabel("Amount paid", { exact: true })).toHaveValue(
+    "100000.00",
+  );
+  await expect(
+    page.getByRole("button", { name: "Read on this device", exact: true }),
+  ).toHaveCount(0);
+  await page.getByLabel("Brand", { exact: true }).fill("Luma");
+  await page.getByLabel("Purchase date", { exact: true }).fill("2026-09-30");
+  // Retry must flush these edits immediately, before the autosave timer fires.
+  await page
+    .getByRole("button", { name: "Retry reading", exact: true })
+    .click();
+  await expect(page.getByLabel("Amount paid", { exact: true })).toHaveValue(
+    "120.00",
+  );
+  await expect(page.getByLabel("Brand", { exact: true })).toHaveValue("Luma");
+  await expect(page.getByLabel("Purchase date", { exact: true })).toHaveValue(
+    "2026-09-30",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        JSON.parse(sessionStorage.getItem("reading-calls") || "{}"),
+      ),
+    )
+    .toEqual({ original: 1, readPage: 1, extract: 1 });
+  await expect(
+    page.getByRole("button", { name: "Retry reading", exact: true }),
+  ).toBeEnabled();
+  await page.reload();
+  await expect(page.getByLabel("Amount paid", { exact: true })).toHaveValue(
+    "120.00",
+  );
+  await expect(page.getByLabel("Brand", { exact: true })).toHaveValue("Luma");
+  await expect(page.getByLabel("Purchase date", { exact: true })).toHaveValue(
+    "2026-09-30",
+  );
+});
+
+test("Retry reading preserves unsaved edits and avoids reading calls when autosave fails", async ({
+  page,
+}) => {
+  await openReview(page, { backgroundAvailable: false });
+  await page.evaluate(() => sessionStorage.setItem("autosave-failure", "true"));
+  await page.getByLabel("Brand", { exact: true }).fill("My correction");
+  await page
+    .getByRole("button", { name: "Retry reading", exact: true })
+    .click();
+  await expect(page.getByRole("alert").first()).toBeVisible();
+  await expect(page.getByLabel("Brand", { exact: true })).toHaveValue(
+    "My correction",
+  );
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(sessionStorage.getItem("reading-calls") || "{}"),
+    ),
+  ).toEqual({});
+  await expect(
+    page.getByRole("button", { name: "Retry reading", exact: true }),
+  ).toBeEnabled();
 });

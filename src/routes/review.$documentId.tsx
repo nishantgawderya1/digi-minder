@@ -92,6 +92,10 @@ function ReviewEditor() {
     }
   };
   const retry = async () => {
+    if (!data.backgroundAvailable) {
+      await readLocally();
+      return;
+    }
     setReading(true);
     setError(null);
     try {
@@ -265,8 +269,8 @@ function ReviewEditor() {
               Upload again
             </Link>
           )}
-          {(data.status === "failed" ||
-            (!data.backgroundAvailable && data.status !== "pending")) &&
+          {data.backgroundAvailable &&
+          data.status === "failed" &&
           !processing ? (
             <button
               type="button"
