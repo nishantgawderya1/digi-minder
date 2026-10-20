@@ -22,26 +22,29 @@ export default defineConfig(({ mode }) => {
       }),
       nitro({
         traceDeps: ["pdfjs-dist*", "tesseract.js*", "tesseract.js-core*"],
-        hooks: {
-          async compiled(nitro) {
+        modules: [
+          (nitro) => {
             if (process.platform !== "win32") return;
-            // Nitro already traces the native binary. Copy only its ICU data
-            // after tracing, avoiding a second concurrent copy of the DLL.
-            const packageName = `@napi-rs/canvas-win32-${process.arch}-msvc`;
-            const require = createRequire(import.meta.url);
-            const source = dirname(require.resolve(packageName));
-            const destination = join(
-              nitro.options.output.serverDir,
-              "node_modules",
-              packageName,
-            );
-            await mkdir(destination, { recursive: true });
-            await copyFile(
-              join(source, "icudtl.dat"),
-              join(destination, "icudtl.dat"),
-            );
+            // Register additively so the deployment preset keeps its own hook.
+            nitro.hooks.hook("compiled", async () => {
+              // Nitro already traces the native binary. Copy only its ICU data
+              // after tracing, avoiding a second concurrent copy of the DLL.
+              const packageName = `@napi-rs/canvas-win32-${process.arch}-msvc`;
+              const require = createRequire(import.meta.url);
+              const source = dirname(require.resolve(packageName));
+              const destination = join(
+                nitro.options.output.serverDir,
+                "node_modules",
+                packageName,
+              );
+              await mkdir(destination, { recursive: true });
+              await copyFile(
+                join(source, "icudtl.dat"),
+                join(destination, "icudtl.dat"),
+              );
+            });
           },
-        },
+        ],
         vercel: { functionRules: { "/api/inngest": { maxDuration: 300 } } },
       }),
       react(),
