@@ -95,6 +95,74 @@ import {
   deliverWelcome,
 } from "@/lib/welcome-delivery.server";
 
+import {
+  prepareEmailPreviews,
+  deliverEmailPreview,
+} from "@/lib/email-preview.server";
+
+describe("admin email previews", () => {
+  async function prepare() {
+    vi.stubEnv("EMAIL_TEST_RECIPIENT", "owner@example.invalid");
+    await db
+      .update(schema.appUsers)
+      .set({ email: "owner@example.invalid", welcomeStatus: "sent" })
+      .where(eq(schema.appUsers.id, userA));
+    await db.insert(schema.items).values({
+      id,
+      userId: userA,
+      name: "Preview bill",
+      warrantyExpiresAt: "2099-10-01",
+    });
+    return prepareEmailPreviews(id);
+  }
+  it("uses the real templates and test recipient without modifying welcome or reminder state", async () => {
+    const preview = await prepare();
+    const key = `warrantly-preview/${randomUUID()}/welcome`;
+    await deliverEmailPreview(preview.welcome, key, preview.preparedAt);
+    expect(dependencies.sendEmail.mock.calls[0]![0]).toMatchObject({
+      to: "owner@example.invalid",
+      html: expect.stringContaining("Save your first bill"),
+      replyTo: "nishantgawderya@gmail.com",
+    });
+    expect(dependencies.sendEmail.mock.calls[0]![1].idempotencyKey).toBe(key);
+    expect(preview.reminder.html).toContain(`/item/${id}`);
+    expect(preview.reminder.subject).toContain("[design preview]");
+    expect(
+      (
+        await db
+          .select()
+          .from(schema.appUsers)
+          .where(eq(schema.appUsers.id, userA))
+      )[0]!.welcomeStatus,
+    ).toBe("sent");
+    expect(await db.select().from(schema.reminders)).toHaveLength(0);
+  });
+  it("requires test mode and rejects a bill owned by another account", async () => {
+    await expect(prepareEmailPreviews(id)).rejects.toThrow("test mode");
+    await prepare();
+    await db
+      .update(schema.items)
+      .set({ userId: userB })
+      .where(eq(schema.items.id, id));
+    await expect(prepareEmailPreviews(id)).rejects.toThrow("must own");
+  });
+  it("stops retries after the recipient changes or the idempotency window expires", async () => {
+    const preview = await prepare();
+    await expect(
+      deliverEmailPreview(
+        preview.welcome,
+        "preview-key",
+        Date.now() - 24 * 3600000,
+      ),
+    ).rejects.toThrow("window expired");
+    vi.stubEnv("EMAIL_TEST_RECIPIENT", "someone-else@example.invalid");
+    await expect(
+      deliverEmailPreview(preview.welcome, "preview-key", preview.preparedAt),
+    ).rejects.toThrow("recipient changed");
+    expect(dependencies.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
 describe("one-time welcome emails", () => {
   it("queues new accounts and sends only once with concurrent or repeated delivery", async () => {
     expect(await pendingWelcomeUserIds()).toContain(userA);

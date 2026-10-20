@@ -11,6 +11,10 @@ import {
 } from "./document-worker.server";
 import { dueEmailIds, deliverReminder } from "./reminder-delivery.server";
 import {
+  prepareEmailPreviews,
+  deliverEmailPreview,
+} from "./email-preview.server";
+import {
   pendingWelcomeUserIds,
   deliverWelcome,
 } from "./welcome-delivery.server";
@@ -108,10 +112,43 @@ export const sendWelcome = inngest.createFunction(
     return step.run("deliver-welcome", () => deliverWelcome(userId));
   },
 );
+export const sendEmailPreviews = inngest.createFunction(
+  {
+    id: "send-email-previews",
+    triggers: [{ event: "warrantly/email.preview" }],
+    retries: 4,
+    idempotency: "event.data.requestId",
+    concurrency: 1,
+  },
+  async ({ event, step }) => {
+    const { requestId, itemId } = z
+      .object({ requestId: z.string().uuid(), itemId: z.string().uuid() })
+      .parse(event.data);
+    const preview = await step.run("prepare-preview", () =>
+      prepareEmailPreviews(itemId),
+    );
+    const welcome = await step.run("send-welcome-preview", () =>
+      deliverEmailPreview(
+        preview.welcome,
+        `warrantly-preview/${requestId}/welcome`,
+        preview.preparedAt,
+      ),
+    );
+    const reminder = await step.run("send-reminder-preview", () =>
+      deliverEmailPreview(
+        preview.reminder,
+        `warrantly-preview/${requestId}/reminder`,
+        preview.preparedAt,
+      ),
+    );
+    return { welcome, reminder };
+  },
+);
 export const backgroundFunctions = [
   processDocument,
   recoverDispatches,
   scheduleEmails,
   sendReminder,
   sendWelcome,
+  sendEmailPreviews,
 ];
