@@ -13,6 +13,11 @@ test("install option explains the browser steps and closes accessibly", async ({
   await expect(dialog).toContainText(
     info.project.name === "mobile" ? "tap Share" : "browser menu",
   );
+  if (info.project.name === "mobile") {
+    await expect(dialog).toContainText(
+      "Turn on “Open as Web App” if shown, then tap “Add” to finish.",
+    );
+  }
   await dialog.getByRole("button", { name: "Got it" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(

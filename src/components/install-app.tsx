@@ -62,7 +62,7 @@ export function InstallApp({
         </p>
         <p className="mt-4 rounded-2xl bg-muted p-4 text-sm leading-relaxed">
           {appleMobile
-            ? "Open this site in Safari, tap Share, then “Add to Home Screen”. Tap “Add” to finish."
+            ? "Open this site in Safari, tap Share, then “Add to Home Screen”. Turn on “Open as Web App” if shown, then tap “Add” to finish."
             : "Open your browser menu and choose “Install Warrantly” or “Add to Home screen”. On a computer, look for the install icon in the address bar. If no option appears, try Chrome, Edge or Safari."}
         </p>
         <button
