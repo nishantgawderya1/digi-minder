@@ -9,16 +9,18 @@ import { reminderEmail } from "./reminder-email";
 
 // Admin-only Inngest previews use the configured test inbox, never an event-supplied recipient.
 // They don't touch the signup ledger or scheduled reminders.
-export async function prepareEmailPreviews(itemId: string) {
+export async function prepareEmailPreviews(itemId?: string) {
   const to = process.env["EMAIL_TEST_RECIPIENT"]?.trim().toLowerCase();
   if (!emailConfigured() || !to)
     throw new Error("Email test mode is required.");
-  const [bill] = await getDatabase()
-    .select({ item: items })
-    .from(items)
-    .innerJoin(appUsers, eq(appUsers.id, items.userId))
-    .where(and(eq(items.id, itemId), sql`lower(${appUsers.email}) = ${to}`));
-  if (!bill?.item.warrantyExpiresAt)
+  const [bill] = itemId
+    ? await getDatabase()
+        .select({ item: items })
+        .from(items)
+        .innerJoin(appUsers, eq(appUsers.id, items.userId))
+        .where(and(eq(items.id, itemId), sql`lower(${appUsers.email}) = ${to}`))
+    : [];
+  if (itemId && !bill?.item.warrantyExpiresAt)
     throw new Error("The test inbox must own a bill with a warranty deadline.");
   const from = process.env["REMINDER_FROM_EMAIL"]!;
   const baseUrl = process.env["APP_BASE_URL"]!;
@@ -28,10 +30,14 @@ export async function prepareEmailPreviews(itemId: string) {
     to,
     baseUrl,
     label: "Warranty",
-    name: bill.item.name,
-    deadline: displayDate(bill.item.warrantyExpiresAt),
-    retailer: bill.item.retailer,
-    itemId,
+    name: bill?.item.name ?? "Example purchase (preview only)",
+    deadline: displayDate(
+      bill?.item.warrantyExpiresAt ??
+        new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    ),
+    retailer: bill?.item.retailer ?? null,
+    itemId: itemId ?? "",
+    samplePreview: !itemId,
   });
   return {
     preparedAt: Date.now(),

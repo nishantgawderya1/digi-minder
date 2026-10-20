@@ -14,16 +14,22 @@ export function reminderEmail(input: {
   deadline: string;
   retailer: string | null;
   itemId: string;
+  samplePreview?: boolean;
 }) {
   const { from, to, label, name, deadline, retailer } = input;
   const origin = new URL(input.baseUrl).origin;
-  const itemUrl = `${origin}/item/${encodeURIComponent(input.itemId)}`;
+  const itemUrl = input.samplePreview
+    ? `${origin}/vault`
+    : `${origin}/item/${encodeURIComponent(input.itemId)}`;
+  const actionLabel = input.samplePreview
+    ? "Open your vault"
+    : "View your saved bill";
   const settingsUrl = `${origin}/reminders`;
   return {
     from,
     to,
     subject: `${label} reminder: ${name.replace(/[\r\n]+/g, " ")}`,
-    text: `${name}\n${label} deadline: ${deadline}\n${retailer ? `Retailer: ${retailer}\n` : ""}\nView your saved bill: ${itemUrl}\n\nManage reminders: ${settingsUrl}`,
+    text: `${name}\n${label} deadline: ${deadline}\n${retailer ? `Retailer: ${retailer}\n` : ""}\n${actionLabel}: ${itemUrl}\n\nManage reminders: ${settingsUrl}`,
     html: emailTemplate(
       label === "Warranty"
         ? "Keep an eye on your warranty."
@@ -36,7 +42,7 @@ export function reminderEmail(input: {
 <p style="margin:2px 0 0;font-size:20px;line-height:1.5;font-weight:600;color:#175e4c">${escapeEmailHtml(deadline)}</p>
 ${retailer ? `<p style="margin:14px 0 0;font-size:14px;color:#626e68">Retailer: ${escapeEmailHtml(retailer)}</p>` : ""}
 </td></tr></table>
-${emailButton("View your saved bill", itemUrl)}
+${emailButton(actionLabel, itemUrl)}
 <p style="margin:0">Your bill and its details are ready whenever you need them.</p>`,
       `You’re receiving this because you enabled email reminders.<br><a href="${escapeEmailHtml(settingsUrl)}" style="${emailLinkStyle}">Manage or turn off reminders</a>`,
     ),

@@ -146,6 +146,16 @@ describe("admin email previews", () => {
       .where(eq(schema.items.id, id));
     await expect(prepareEmailPreviews(id)).rejects.toThrow("must own");
   });
+  it("can preview a labelled sample without creating bills or broken item links", async () => {
+    vi.stubEnv("EMAIL_TEST_RECIPIENT", "owner@example.invalid");
+    const preview = await prepareEmailPreviews();
+    expect(preview.reminder.html).toContain("Example purchase (preview only)");
+    expect(preview.reminder.html).toContain(
+      'href="https://warrantly.example.invalid/vault"',
+    );
+    expect(preview.reminder.html).not.toContain("/item/");
+    expect(await db.select().from(schema.items)).toHaveLength(0);
+  });
   it("stops retries after the recipient changes or the idempotency window expires", async () => {
     const preview = await prepare();
     await expect(

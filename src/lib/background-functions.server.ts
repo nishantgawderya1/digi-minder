@@ -122,7 +122,10 @@ export const sendEmailPreviews = inngest.createFunction(
   },
   async ({ event, step }) => {
     const { requestId, itemId } = z
-      .object({ requestId: z.string().uuid(), itemId: z.string().uuid() })
+      .object({
+        requestId: z.string().uuid(),
+        itemId: z.string().uuid().optional(),
+      })
       .parse(event.data);
     const preview = await step.run("prepare-preview", () =>
       prepareEmailPreviews(itemId),
