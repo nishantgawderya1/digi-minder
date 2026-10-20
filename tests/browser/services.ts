@@ -1,7 +1,12 @@
 import { emptyBillFields, type Bill, type BillFields } from "@/lib/bills";
 import { extractBillFields } from "@/lib/ocr";
 import { prepareDocument, readPreparedDocument } from "@/lib/document-client";
-import type { DraftPatch } from "@/lib/review";
+import type {
+  DraftPatch,
+  FieldEvidence,
+  FieldIssue,
+  FieldIssues,
+} from "@/lib/review";
 import { simulateRequest } from "./latency";
 
 const id = "ab096c6d-c5c6-42c7-959a-0f3d46591a4f";
@@ -23,6 +28,9 @@ type Draft = {
   previewUrl: string;
   revision?: number;
   draftPatch?: DraftPatch;
+  fieldIssues?: FieldIssues;
+  nameIssue?: FieldIssue | null;
+  evidence?: FieldEvidence;
   job?: { status: string; completedPages: number; error: string | null };
   error?: string | null;
 };
@@ -74,10 +82,13 @@ export const loadReview = async () => {
     error: draft.error ?? null,
     revision: draft.revision ?? 0,
     draftPatch: draft.draftPatch ?? {},
+    fieldIssues: draft.fieldIssues ?? {},
+    nameIssue: draft.nameIssue ?? draft.fieldIssues?.name ?? null,
     evidence:
-      draft.status === "review"
+      draft.evidence ??
+      (draft.status === "review"
         ? { serialNumber: { quote: "Serial number: 001234", page: 0 } }
-        : {},
+        : {}),
     job: draft.job ?? null,
     backgroundAvailable: true,
   });

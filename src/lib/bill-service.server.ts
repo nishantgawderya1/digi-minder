@@ -29,7 +29,12 @@ import {
   uploadKey,
 } from "./storage.server";
 import { serviceResult, ServiceError } from "./service-error.server";
-import { autosaveSchema, draftPatchSchema, evidenceWithPages } from "./review";
+import {
+  autosaveSchema,
+  draftPatchSchema,
+  evidenceWithPages,
+  readFieldIssues,
+} from "./review";
 import { backgroundConfigured } from "./inngest.server";
 
 async function ownedDocument(userId: string, id: string) {
@@ -135,15 +140,12 @@ export async function loadReview(id: string) {
       document.extractedData?.["fields"],
     );
     const draft = draftPatchSchema.safeParse(document.draftFields);
-    const nameIssue = z
-      .object({
-        fieldIssues: z.object({
-          name: z
-            .enum(["missing", "absent", "ambiguous", "unreadable", "rejected"])
-            .optional(),
-        }),
-      })
+    const diagnostics = z
+      .object({ fieldIssues: z.unknown() })
       .safeParse(document.extractedData?.["extractionDiagnostics"]);
+    const fieldIssues = readFieldIssues(
+      diagnostics.success ? diagnostics.data.fieldIssues : null,
+    );
     const [job] = await getDatabase()
       .select()
       .from(documentJobs)
@@ -168,9 +170,8 @@ export async function loadReview(id: string) {
           document.extractedData?.["extraction"] as
             { method?: string } | undefined
         )?.method ?? null,
-      nameIssue: nameIssue.success
-        ? (nameIssue.data.fieldIssues.name ?? null)
-        : null,
+      nameIssue: fieldIssues.name ?? null,
+      fieldIssues,
       pageCount: document.pageCount,
       pages,
       job: job

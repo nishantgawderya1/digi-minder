@@ -1,5 +1,27 @@
 import { z } from "zod";
-import { billFieldsSchema } from "./bills";
+import { billFieldsSchema, type BillFields } from "./bills";
+
+const fieldIssueSchema = z.enum([
+  "missing",
+  "absent",
+  "ambiguous",
+  "unreadable",
+  "rejected",
+]);
+export type FieldIssue = z.infer<typeof fieldIssueSchema>;
+export type FieldIssues = Partial<Record<keyof BillFields, FieldIssue>>;
+
+export function readFieldIssues(value: unknown): FieldIssues {
+  const input = z.record(z.unknown()).safeParse(value);
+  if (!input.success) return {};
+  const issues: FieldIssues = {};
+  for (const [field, issue] of Object.entries(input.data)) {
+    const parsed = fieldIssueSchema.safeParse(issue);
+    if (Object.hasOwn(billFieldsSchema.shape, field) && parsed.success)
+      issues[field as keyof BillFields] = parsed.data;
+  }
+  return issues;
+}
 
 export const draftPatchSchema = billFieldsSchema.partial().strict();
 export type DraftPatch = z.infer<typeof draftPatchSchema>;

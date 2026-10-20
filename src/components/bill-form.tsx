@@ -13,7 +13,7 @@ import {
   deadlineFromDuration,
   type BillFields,
 } from "@/lib/bills";
-import type { DraftPatch, FieldEvidence } from "@/lib/review";
+import type { DraftPatch, FieldEvidence, FieldIssues } from "@/lib/review";
 
 export function BillForm({
   initial,
@@ -24,6 +24,8 @@ export function BillForm({
   onChange,
   evidence = {},
   draftPatch = {},
+  fieldIssues = {},
+  reviewMode = false,
   warnMissingName = false,
   missingNameMessage = "Item name not found in the extracted details.",
 }: {
@@ -35,6 +37,8 @@ export function BillForm({
   onChange?: (patch: DraftPatch) => void;
   evidence?: FieldEvidence;
   draftPatch?: DraftPatch;
+  fieldIssues?: FieldIssues;
+  reviewMode?: boolean;
   warnMissingName?: boolean;
   missingNameMessage?: string;
 }) {
@@ -114,6 +118,22 @@ export function BillForm({
     setFields(next);
     onChange?.(patch);
   };
+  const reviewHint = (key: keyof BillFields) => {
+    if (!reviewMode || edited.current.has(key) || key === "name") return null;
+    const issue = fieldIssues[key];
+    const uncertain =
+      issue === "rejected" || issue === "ambiguous" || issue === "unreadable";
+    if (key === "brand" && (!fields.brand || uncertain))
+      return "Brand wasn’t clear. Add it from the item or leave it blank.";
+    if (!uncertain) return null;
+    if (key === "purchasePrice")
+      return "The final amount wasn’t clear. Check the total paid, including tax.";
+    if (key === "purchaseDate")
+      return "Check the invoice or purchase date, rather than the delivery date.";
+    if (issue === "ambiguous")
+      return "More than one possible value. Check the original before adding it.";
+    return "Not confirmed from the bill. Check the original or leave this blank.";
+  };
   const provenance = (key: keyof BillFields) => {
     const source = evidence[key];
     const calculated =
@@ -145,6 +165,16 @@ export function BillForm({
       return (
         <p className="mt-1 text-[11px] font-normal text-muted-foreground">
           Your correction
+        </p>
+      );
+    const hint = reviewHint(key);
+    if (hint)
+      return (
+        <p
+          id={`bill-${key}-review`}
+          className="mt-1 text-xs font-normal leading-relaxed text-muted-foreground"
+        >
+          {hint}
         </p>
       );
     if (source)
@@ -192,7 +222,9 @@ export function BillForm({
         aria-describedby={
           key === "name" && warnMissingName && !fields.name
             ? "bill-name-missing"
-            : undefined
+            : reviewHint(key)
+              ? `bill-${key}-review`
+              : undefined
         }
         className={`${inputClass} ${key === "name" && warnMissingName && !fields.name ? "border-accent" : ""}`}
       />
@@ -224,6 +256,7 @@ export function BillForm({
             : undefined
         }
         className={inputClass}
+        aria-describedby={reviewHint(key) ? `bill-${key}-review` : undefined}
       />
       {provenance(key)}
     </div>
@@ -262,9 +295,10 @@ export function BillForm({
           </div>
           {textField("name", "Bill / item name")}
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            {textField("brand", "Brand", 120)}
             {textField("retailer", "Store / retailer")}
-            {dateField("purchaseDate", "Purchase date")}
           </div>
+          {dateField("purchaseDate", "Purchase date")}
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_100px] gap-4">
             <div className="min-w-0 text-xs font-semibold">
               <label htmlFor="bill-price">Amount paid</label>
@@ -280,6 +314,11 @@ export function BillForm({
                   update("purchasePrice", event.target.value || null)
                 }
                 className={inputClass}
+                aria-describedby={
+                  reviewHint("purchasePrice")
+                    ? "bill-purchasePrice-review"
+                    : undefined
+                }
               />
               {provenance("purchasePrice")}
             </div>
@@ -294,7 +333,7 @@ export function BillForm({
                 maxLength={3}
                 minLength={3}
                 required
-                aria-describedby="bill-currency-help"
+                aria-describedby={`bill-currency-help${reviewHint("currency") ? " bill-currency-review" : ""}`}
                 className={inputClass}
               />
               <p
@@ -341,6 +380,11 @@ export function BillForm({
                   )
                 }
                 className={inputClass}
+                aria-describedby={
+                  reviewHint("warrantyMonths")
+                    ? "bill-warrantyMonths-review"
+                    : undefined
+                }
               />
               {provenance("warrantyMonths")}
             </div>
@@ -349,6 +393,11 @@ export function BillForm({
               <label htmlFor="bill-return-days">Return window (days)</label>
               <input
                 id="bill-return-days"
+                aria-describedby={
+                  reviewHint("returnWindowDays")
+                    ? "bill-returnWindowDays-review"
+                    : undefined
+                }
                 type="number"
                 min="0"
                 max="3650"
@@ -405,13 +454,12 @@ export function BillForm({
             <span>
               <span className="block text-sm font-bold">Product details</span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                Optional · brand, category & reference numbers
+                Optional · category & reference numbers
               </span>
             </span>
             <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
           <div className="grid min-w-0 gap-4 border-t border-border p-4 sm:grid-cols-2">
-            {textField("brand", "Brand", 120)}
             <div className="min-w-0 text-xs font-semibold">
               <label htmlFor="bill-category">Category</label>
               <select
@@ -426,6 +474,9 @@ export function BillForm({
                   )
                 }
                 className={inputClass}
+                aria-describedby={
+                  reviewHint("category") ? "bill-category-review" : undefined
+                }
               >
                 <option value="">Uncategorized</option>
                 {categories.map((category) => (

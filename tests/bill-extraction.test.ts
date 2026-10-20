@@ -36,6 +36,165 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("Evidence-checked AI bill fields", () => {
+  it("rejects exact printed tokens mapped from the wrong receipt columns", () => {
+    const source = `Seller: Acme Store
+Buyer: Test Buyer
+Product name: Acme Cover compatible with Apple iPhone
+Invoice Number: INV-000123
+Order ID: ORDER-000456
+GSTIN: 00099887
+Model: AC-20
+EAN: 0099887766
+MRP INR 2000.00
+Subtotal INR 1000.00
+Tax INR 180.00
+Grand Total INR 1180.00
+Order Date: 01/10/2026
+Delivery Date: 06/10/2026
+Invoice Date: 02/10/2026`;
+    const result = validateExtraction(
+      {
+        fields: {
+          name: "Acme Cover compatible with Apple iPhone",
+          retailer: "Test Buyer",
+          brand: "Apple",
+          invoiceNumber: "ORDER-000456",
+          serialNumber: "ORDER-000456",
+          modelNumber: "ORDER-000456",
+          barcode: "00099887",
+          purchasePrice: "2000.00",
+          purchaseDate: "2026-10-06",
+        },
+        evidence: {
+          name: "Acme Cover compatible with Apple iPhone",
+          retailer: "Test Buyer",
+          brand: "Apple",
+          invoiceNumber: "ORDER-000456",
+          serialNumber: "ORDER-000456",
+          modelNumber: "ORDER-000456",
+          barcode: "00099887",
+          purchasePrice: "2000.00",
+          purchaseDate: "06/10/2026",
+        },
+      },
+      source,
+    );
+    expect(result.fields).toMatchObject({
+      name: "Acme Cover compatible with Apple iPhone",
+      retailer: null,
+      brand: null,
+      invoiceNumber: null,
+      serialNumber: null,
+      modelNumber: null,
+      barcode: null,
+      purchasePrice: null,
+      purchaseDate: null,
+    });
+    expect(result.fieldIssues).toMatchObject({
+      retailer: "rejected",
+      brand: "rejected",
+      invoiceNumber: "rejected",
+      serialNumber: "rejected",
+      modelNumber: "rejected",
+      barcode: "rejected",
+      purchasePrice: "rejected",
+      purchaseDate: "rejected",
+    });
+    const corrected = validateExtraction(
+      {
+        fields: {
+          name: "Acme Cover compatible with Apple iPhone",
+          retailer: "Acme Store",
+          brand: "Acme",
+          invoiceNumber: "INV-000123",
+          modelNumber: "AC-20",
+          barcode: "0099887766",
+          purchasePrice: "1180.00",
+          purchaseDate: "2026-10-02",
+        },
+        evidence: {
+          name: "Acme Cover compatible with Apple iPhone",
+          retailer: "Acme Store",
+          brand: "Acme",
+          invoiceNumber: "INV-000123",
+          modelNumber: "AC-20",
+          barcode: "0099887766",
+          purchasePrice: "1180.00",
+          purchaseDate: "02/10/2026",
+        },
+      },
+      source,
+    );
+    expect(corrected.fields).toMatchObject({
+      retailer: "Acme Store",
+      brand: "Acme",
+      invoiceNumber: "INV-000123",
+      modelNumber: "AC-20",
+      barcode: "0099887766",
+      purchasePrice: "1180.00",
+      purchaseDate: "2026-10-02",
+    });
+  });
+  it("recovers a missing explicitly labeled maker without changing other fields", () => {
+    const result = validateExtraction(
+      {
+        fields: { purchasePrice: "170.00" },
+        evidence: { purchasePrice: "170.00" },
+      },
+      "Manufacturer: Acme Electronics\nModel: L10\nGrand Total INR 170.00",
+    );
+    expect(result.fields).toMatchObject({
+      brand: "Acme Electronics",
+      purchasePrice: "170.00",
+      name: "",
+      modelNumber: null,
+    });
+    expect(result.evidence.brand).toBe("Manufacturer: Acme Electronics");
+    expect(result.fieldIssues.brand).toBeUndefined();
+  });
+  it("finds the invoice date in a quote containing earlier order and delivery dates", () => {
+    const source =
+      "Order Date: 01/10/2026\nDelivery Date: 06/10/2026\nInvoice Date: 02/10/2026";
+    const result = validateExtraction(
+      {
+        fields: { purchaseDate: "2026-10-02" },
+        evidence: { purchaseDate: source },
+      },
+      source,
+    );
+    expect(result.fields.purchaseDate).toBe("2026-10-02");
+    expect(result.fieldIssues.purchaseDate).toBeUndefined();
+  });
+  it("allows a printed model code inside the item title but not an arbitrary brand word", () => {
+    const name = "Acme Lamp L10";
+    for (const [modelNumber, expected] of [
+      ["L10", "L10"],
+      ["Acme", null],
+    ]) {
+      const result = validateExtraction(
+        {
+          fields: { name, modelNumber },
+          evidence: { name, modelNumber },
+        },
+        name,
+      );
+      expect(result.fields.modelNumber).toBe(expected);
+    }
+  });
+  it("does not recover a maker across ambiguous products or separate invoices", () => {
+    for (const input of [
+      { productCount: 2, text: "Brand: Acme" },
+      {
+        text: "Invoice Number: GOODS0001\nBrand: Acme\nInvoice Number: OTHER0002\nBrand: Other",
+      },
+    ]) {
+      const result = validateExtraction(
+        { fields: {}, evidence: {}, ...input },
+        input.text,
+      );
+      expect(result.fields.brand).toBeNull();
+    }
+  });
   it("does not turn invoice-table headers into product names", () => {
     expect(
       extractBillFields("Product Description Qty Discount IGST CESS Total")

@@ -62,7 +62,7 @@ vi.mock("@/lib/assistant-model.server", () => ({
 }));
 vi.mock("@/lib/bill-extraction.server", () => ({
   extractBillWithAi: dependencies.extractBillWithAi,
-  EXTRACTION_VERSION: 2,
+  EXTRACTION_VERSION: 3,
 }));
 vi.mock("@/lib/storage.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/storage.server")>()),
@@ -564,7 +564,11 @@ describe("Private document lifecycle", () => {
           warning: null,
           diagnostics: {
             repairedName: true,
-            fieldIssues: { name: "rejected" },
+            fieldIssues: {
+              name: "rejected",
+              brand: "ambiguous",
+              purchasePrice: "rejected",
+            },
           },
         };
       },
@@ -575,7 +579,7 @@ describe("Private document lifecycle", () => {
       .from(schema.documents)
       .where(eq(schema.documents.id, id));
     expect(document?.extractedData?.["extraction"]).toMatchObject({
-      version: 2,
+      version: 3,
       attempts: 2,
       status: "complete",
     });
@@ -584,6 +588,11 @@ describe("Private document lifecycle", () => {
     });
     const review = await service.loadReview(id);
     expect(review.ok && review.data.nameIssue).toBe("rejected");
+    expect(review.ok && review.data.fieldIssues).toEqual({
+      name: "rejected",
+      brand: "ambiguous",
+      purchasePrice: "rejected",
+    });
   });
   it("denies a repair when the primary request spent the last budget slot", async () => {
     await service.readDocumentPage({
@@ -596,7 +605,7 @@ describe("Private document lifecycle", () => {
       .set({
         extractedData: {
           extraction: {
-            version: 2,
+            version: 3,
             attempts: 2,
             status: "complete",
             method: "labels",
@@ -645,7 +654,11 @@ describe("Private document lifecycle", () => {
           },
           fields: emptyBillFields(),
         },
-        draftFields: { name: "My name" },
+        draftFields: {
+          name: "My name",
+          brand: "My corrected brand",
+          purchasePrice: "145.00",
+        },
       })
       .where(eq(schema.documents.id, id));
     expect((await service.finishReading(id)).ok).toBe(true);
@@ -654,12 +667,14 @@ describe("Private document lifecycle", () => {
     ).toBe(true);
     const review = await service.loadReview(id);
     expect(review.ok && review.data.fields.name).toBe("My name");
+    expect(review.ok && review.data.fields.brand).toBe("My corrected brand");
+    expect(review.ok && review.data.fields.purchasePrice).toBe("145.00");
     const [document] = await db
       .select()
       .from(schema.documents)
       .where(eq(schema.documents.id, id));
     expect(document?.extractedData?.["extraction"]).toMatchObject({
-      version: 2,
+      version: 3,
       attempts: 2,
     });
   });

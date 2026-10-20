@@ -308,7 +308,7 @@ function ReviewEditor() {
                   ? "Automatic reading hasn't completed. Retry or enter the details from your original."
                   : lowConfidence
                     ? "Some text was difficult to read. Check the suggested values against your original."
-                    : "We filled in what we could read. Check the name, amount and dates before saving. You can view the original or expand a field's source to compare.")}
+                    : "Check the item, brand, total paid and purchase date. Uncertain details stay blank; optional fields can be added later. View the original or expand a field’s source to compare.")}
           </p>
           <p
             role="status"
@@ -331,6 +331,8 @@ function ReviewEditor() {
             onChange={autosave.change}
             evidence={data.evidence}
             draftPatch={data.draftPatch}
+            fieldIssues={data.fieldIssues}
+            reviewMode={data.status === "review"}
             warnMissingName={data.status === "review" && !data.fields.name}
             missingNameMessage={
               data.nameIssue === "ambiguous"

@@ -20,9 +20,16 @@ import {
   normalizeSource as normalized,
   type ExtractionPage,
 } from "./extraction-source";
+import {
+  recoverLabeledBrand,
+  supportsBrand,
+  supportsFieldRole,
+  supportsProductToken,
+  supportsRetailer,
+} from "./extraction-field-evidence";
 
 const MAX_TEXT = 60_000;
-export const EXTRACTION_VERSION = 2;
+export const EXTRACTION_VERSION = 3;
 type FieldKey = Exclude<keyof BillFields, "reminderDays">;
 type FieldIssue =
   "missing" | "absent" | "ambiguous" | "unreadable" | "rejected";
@@ -53,10 +60,14 @@ function containsSeparateInvoices(text: string) {
 }
 
 function dateInEvidence(evidence: string) {
-  const token = evidence.match(
-    /\b(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})\b/,
-  )?.[0];
-  return readReceiptDate(token ?? null);
+  return [
+    ...evidence.matchAll(
+      /\b(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})\b/g,
+    ),
+  ].flatMap(([token]) => {
+    const value = readReceiptDate(token);
+    return value ? [{ token, value }] : [];
+  });
 }
 
 export function validateExtraction(
@@ -114,10 +125,23 @@ export function validateExtraction(
     if (
       ["purchaseDate", "warrantyExpiresAt", "returnExpiresAt"].includes(key)
     ) {
-      value = dateInEvidence(quote);
-      if (!value) {
-        continue;
-      }
+      const dates = dateInEvidence(quote).filter((date) =>
+        supportsFieldRole(
+          key as "purchaseDate" | "warrantyExpiresAt" | "returnExpiresAt",
+          date.token,
+          source.text,
+          quote,
+        ),
+      );
+      const distinct = [
+        ...new Map(dates.map((date) => [date.value, date])).values(),
+      ];
+      const date =
+        distinct.length === 1
+          ? distinct[0]
+          : distinct.find((date) => date.value === value);
+      if (!date) continue;
+      value = date.value;
     } else if (key === "purchasePrice") {
       const amount = typeof value === "number" ? String(value) : value;
       if (
@@ -129,7 +153,9 @@ export function validateExtraction(
       const prices = quote.match(/\d[\d,]*(?:\.\d{1,2})?/g) ?? [];
       if (
         !prices.some(
-          (price) => Number(price.replace(/,/g, "")) === Number(amount),
+          (price) =>
+            Number(price.replace(/,/g, "")) === Number(amount) &&
+            supportsFieldRole("purchasePrice", price, source.text, quote),
         )
       ) {
         continue;
@@ -147,7 +173,12 @@ export function validateExtraction(
           : /days?/i.test(unit)
             ? quantity
             : null;
-      if (supported === null || value !== supported) {
+      if (
+        supported === null ||
+        value !== supported ||
+        !duration ||
+        !supportsFieldRole(key, duration[0], source.text, quote)
+      ) {
         continue;
       }
     } else if (key === "currency") {
@@ -188,6 +219,26 @@ export function validateExtraction(
       }
       if (key === "serialNumber" && !hasSerialLabel(value, source.text))
         continue;
+      if (
+        ["invoiceNumber", "modelNumber", "barcode"].includes(key) &&
+        !supportsFieldRole(
+          key as "invoiceNumber" | "modelNumber" | "barcode",
+          value,
+          source.text,
+          quote,
+        ) &&
+        // Models can be printed inside the verified product description.
+        !(
+          key === "modelNumber" &&
+          /\p{L}/u.test(value) &&
+          /\d/.test(value) &&
+          supportsProductToken(value, fields.name)
+        )
+      )
+        continue;
+      if (key === "brand" && !supportsBrand(value, source.text, fields.name))
+        continue;
+      if (key === "retailer" && !supportsRetailer(value, source.text)) continue;
     }
     const valid = billFieldsSchema.shape[key].safeParse(value);
     if (!valid.success) {
@@ -198,13 +249,13 @@ export function validateExtraction(
     evidence[key] = quote;
     delete fieldIssues[key];
   }
-  if (
-    fields.brand &&
-    fields.name.toLowerCase().includes(`for ${fields.brand.toLowerCase()}`)
-  ) {
-    fields.brand = null;
-    delete evidence["brand"];
-    fieldIssues.brand = "rejected";
+  if (!fields.brand && !source.ambiguous && !multipleProducts) {
+    const recovered = recoverLabeledBrand(source.text);
+    if (recovered) {
+      fields.brand = recovered.value;
+      evidence["brand"] = recovered.quote;
+      delete fieldIssues.brand;
+    }
   }
   for (const key of ["warrantyExpiresAt", "returnExpiresAt"] as const) {
     if (
@@ -245,7 +296,7 @@ Return concise JSON: productCount, invoicePages, productNameParts, fields, evide
 Allowed fields: name, retailer, brand, invoiceNumber, serialNumber, modelNumber, barcode, category,
 purchasePrice, currency, purchaseDate, warrantyMonths, warrantyExpiresAt, returnWindowDays, returnExpiresAt, notes.
 Return ALL supported fields, not only name. Omit missing fields or use null.
-Every suggestion needs evidence: an exact contiguous quote from input text. Do not add or normalize quote labels.
+Every suggestion needs evidence: an exact contiguous quote from input text. Include its printed field label and value where available so the field's role is clear. Do not add or normalize quote labels.
 
 Select ONE goods invoice. invoicePages lists its input page numbers. Keep its seller, date, invoice number
 and final total together; exclude delivery/platform invoices and never add separate totals.
@@ -261,14 +312,14 @@ This example is format only, not evidence. Do not paraphrase or synthesize a tit
 For several distinct items leave name/serial/model/brand null and nameStatus="ambiguous".
 Otherwise a missing name has nameStatus="absent" or "unreadable". Omit nameStatus for a populated name.
 
-retailer is seller. Accessory brand is its maker, not the compatible phone's brand/model.
+retailer is seller, never buyer, shipping recipient or manufacturer. brand is the purchased item's maker, supported by an explicit Brand/Manufacturer label or the product description before compatibility language. Accessory brand is not the compatible phone's brand/model. Leave brand null rather than guessing it from the seller, a logo, or outside knowledge.
 Identifiers are strings retaining leading zeroes. Quote the exact identifier token, without adding/changing labels.
 Never confuse serial, barcode, invoice, order, GST or model IDs.
 Do not invent absent serials or decode barcode symbols.
-purchasePrice is final payable total with tax, not MRP/subtotal/unit price: a decimal string without commas/symbols.
-For price evidence quote the actual amount token as printed, even if it is an integer; never change quote decimals.
+purchasePrice is final payable total with tax, not MRP/subtotal/unit price/tax/discount/installment: a decimal string without commas/symbols.
+For price evidence quote the final-total label and actual amount token as printed, even if it is an integer; never change quote decimals. Do not select an earlier generic Total when a final Grand Total/Net Payable is printed.
 currency is explicit ISO currency or null. Dates are YYYY-MM-DD, numeric input is day/month/year;
-quote the EXACT printed date token, preserving zeroes and separators. Warranty/return durations require printed numbers/units: integer months/days.
+purchaseDate is invoice/receipt/purchase date, never order/delivery/manufacturing/payment-due date. Quote the printed date label and EXACT token, preserving zeroes and separators. Warranty/return durations require their printed policy labels and numbers/units: integer months/days.
 Do not infer policies or today's date; expiry dates stay null unless printed.
 category is Electronics, Appliances, Furniture, Clothing or Other, evidenced by item text. notes is verbatim text only.
 Shape: {"productCount":1,"invoicePages":[1],"productNameParts":["Acme Lamp"],"fields":{"name":"Acme Lamp","serialNumber":"001234","purchasePrice":"170.00","purchaseDate":"2026-10-02"},"evidence":{"name":"Acme Lamp","serialNumber":"001234","purchasePrice":"170","purchaseDate":"02/10/2026"},"multipleInvoices":false}.
@@ -416,9 +467,11 @@ export async function extractBillWithAi(
           repairedName = true;
           if (
             result.fields.brand &&
-            result.fields.name
-              .toLowerCase()
-              .includes(`for ${result.fields.brand.toLowerCase()}`)
+            !supportsBrand(
+              result.fields.brand,
+              result.source.text,
+              result.fields.name,
+            )
           ) {
             result.fields.brand = null;
             delete result.evidence["brand"];
