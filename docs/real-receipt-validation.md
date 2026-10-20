@@ -44,6 +44,21 @@ The same seven photos were recognized with actual Tesseract and passed through t
 
 The Ovaltine receipt's final 20,000 amount is recovered. Both French receipts now recover their amounts and readable dates. Five deliberately blurred dates remain empty. The five correct brand results are correct empty results; neither positive brand example was recovered by this local fallback. Four totals also remain omitted because the recognized text is insufficient for a safe value. These omissions remain visible and editable in the existing review screen.
 
+## Live post-change checks
+
+The authenticated production app was checked in Chrome using unfinished drafts, without saving public test receipts to the vault:
+
+- A fresh `cord-validation-002` upload recovered **20,000.00**, replacing the baseline's incorrect 100,000 cash value. The displayed OCR now keeps `Total: 20,000`, `Cash: 100,000` and `CHANGE: 80,000` on their own rows. The product text remains damaged (`1 S-0valt`), so Brand stays empty; its deliberately blurred date also stays empty. No printed currency was recovered, so the form's INR default still requires correction to IDR.
+- Retrying the older upload against its cached, misaligned OCR rejected the incorrect 100,000 value and left Amount empty. This is a safety check against old OCR, not a fresh recognition measurement.
+- Retrying `google-receipt` recovered **12.50** and **2021-07-25**. This also exposed a missing-model-currency case reverting to INR. Extraction version 5 now recovers a unique explicit printed currency, with regressions for EUR, unsupported defaults, bare dollar signs and conflicting currencies. The final live retry confirmed **EUR 12.50**, **2021-07-25** and an empty Brand without manually editing those fields.
+- A fresh `cord-validation-005` upload recognized the faint brand as `LE HINERAL`. Brand remained empty. Its ambiguous `8.000` amount also stayed empty, without inventing a currency or decimal convention.
+
+The live UI does not independently establish the provider for every stage. These observations verify the app's image-to-form behavior, not raw NVIDIA response geometry or a comprehensive provider benchmark. Faint-brand recognition remains unresolved; no spelling substitution or brand lookup was added that could invent a maker.
+
+The existing Retry reading control now runs the available reader directly when hosted background jobs are unavailable. It preserves manual edits, flushes pending autosaves before reading and keeps the existing model-call budget. New uploads require no additional steps.
+
+Validation: 409 unit tests across 25 files, typecheck and changed-file lint passed. Desktop/mobile browser coverage includes four retry and autosave regressions. Production PWA checks passed. Windows production builds and packaged PDF/native-canvas/Tesseract verification passed; the Vercel preset also generated its deployment output successfully. The checkout's existing CRLF-only lint failures were checked separately with an end-of-line override, without reformatting the repository.
+
 ## Reproducing the evaluation
 
 Create a private manifest using the format accepted by `scripts/evaluate-extraction.mjs`: a `cases` array with an ID, a relative `file` path and an `expected` object. Use the app's field names `brand`, `purchasePrice`, `currency` and `purchaseDate`; prices are decimal strings and unknown fields are `null`. Keep originals and this private manifest outside Git. Downloaded source annotations must never be substituted for OCR text when measuring the image pipeline.
@@ -60,4 +75,4 @@ Reports show per-field matches, wrong populated values, omissions, OCR sources, 
 
 The corpus has two positive brand examples, two readable dates and five deliberately unreadable dates. It covers Indonesian and French receipts, with no representative Indian electronics/warranty corpus or newly captured user phone photos. It therefore tests important failures—cash versus total, separators, receipt dates and absent brands—without proving robust logo recognition or broad brand coverage. Printed brand spelling is preserved; missing or unreadable brand information must remain empty. No extra upload, confirmation or review step is required by the evaluator or the extraction changes.
 
-Final post-change full-provider accuracy must be recorded separately from the baseline and local fallback checks above. The remaining brand and amount omissions must not be represented as fixed by the fallback measurements.
+The live checks above and local fallback measurements are distinct. The remaining brand, currency and amount omissions must not be represented as fixed, and the selected corpus does not establish full-provider accuracy.
