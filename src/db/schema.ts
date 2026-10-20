@@ -31,6 +31,7 @@ export const appUsers = pgTable("app_users", {
     replyTo: string;
     subject: string;
     text: string;
+    html?: string;
   }>(),
   emailReminders: boolean("email_reminders").default(false).notNull(),
   timezone: text("timezone").default("UTC").notNull(),
@@ -222,6 +223,7 @@ export const reminders = pgTable(
       to: string;
       subject: string;
       text: string;
+      html?: string;
     } | null>(),
     deliveryAttempts: integer("delivery_attempts").default(0).notNull(),
     deliveryError: text("delivery_error"),

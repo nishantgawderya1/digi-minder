@@ -5,6 +5,7 @@ import { getDatabase } from "@/db/index.server";
 import { appUsers, items, reminders } from "@/db/schema";
 import { emailConfigured } from "./notification-service.server";
 import { displayDate } from "./bills";
+import { reminderEmail } from "./reminder-email";
 import { clerkClient } from "@clerk/tanstack-react-start/server";
 
 export async function dueEmailIds() {
@@ -93,13 +94,18 @@ export async function deliverReminder(id: string) {
       : entry.bill.returnExpiresAt;
   const label =
     entry.reminder.deadlineType === "warranty" ? "Warranty" : "Return";
-  const origin = new URL(process.env["APP_BASE_URL"]!).origin;
-  const payload = entry.reminder.deliveryPayload ?? {
-    from: process.env["REMINDER_FROM_EMAIL"]!,
-    to: entry.user.email,
-    subject: `${label} reminder: ${entry.bill.name.replace(/[\r\n]+/g, " ")}`,
-    text: `${entry.bill.name}\n${label} deadline: ${displayDate(expiry)}\n${entry.bill.retailer ? `Retailer: ${entry.bill.retailer}\n` : ""}\nView your saved bill: ${origin}/item/${entry.bill.id}\n\nManage reminders: ${origin}/reminders`,
-  };
+  const payload =
+    entry.reminder.deliveryPayload ??
+    reminderEmail({
+      from: process.env["REMINDER_FROM_EMAIL"]!,
+      to: entry.user.email,
+      baseUrl: process.env["APP_BASE_URL"]!,
+      label,
+      name: entry.bill.name,
+      deadline: displayDate(expiry),
+      retailer: entry.bill.retailer,
+      itemId: entry.bill.id,
+    });
   if (payload.to !== address.emailAddress) {
     await db
       .update(reminders)

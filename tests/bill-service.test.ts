@@ -105,6 +105,7 @@ describe("one-time welcome emails", () => {
       to: "owner@example.invalid",
       replyTo: "nishantgawderya@gmail.com",
       subject: "Welcome to Warrantly — a quick hello from Nishant",
+      html: expect.stringContaining("Save your first bill"),
     });
     expect(dependencies.sendEmail.mock.calls[0]![0].text).toContain(
       "https://warrantly.example.invalid/reminders",
@@ -135,6 +136,22 @@ describe("one-time welcome emails", () => {
     expect(dependencies.sendEmail.mock.calls[0]![1].idempotencyKey).toEqual(
       dependencies.sendEmail.mock.calls[1]![1].idempotencyKey,
     );
+  });
+
+  it("preserves an already-started plain-text welcome after a template upgrade", async () => {
+    const frozen = {
+      from: "Warrantly <onboarding@resend.dev>",
+      to: "owner@example.invalid",
+      replyTo: "nishantgawderya@gmail.com",
+      subject: "Original welcome",
+      text: "Original plain-text message",
+    };
+    await db
+      .update(schema.appUsers)
+      .set({ welcomePayload: frozen, welcomeStartedAt: new Date() })
+      .where(eq(schema.appUsers.id, userA));
+    await deliverWelcome(userA);
+    expect(dependencies.sendEmail.mock.calls[0]![0]).toEqual(frozen);
   });
 
   it("restricts testing and does not opt other accounts into email reminders", async () => {
@@ -1235,6 +1252,7 @@ describe("Reminder preferences and delivery", () => {
     expect(dependencies.sendEmail).toHaveBeenCalledTimes(1);
     expect(dependencies.sendEmail.mock.calls[0]![0]).toMatchObject({
       to: "owner@example.invalid",
+      html: expect.stringContaining("View your saved bill"),
     });
     expect(dependencies.sendEmail.mock.calls[0]![1]).toMatchObject({
       idempotencyKey: `warrantly-reminder/${emailId}`,
@@ -1248,6 +1266,22 @@ describe("Reminder preferences and delivery", () => {
       ).rows[0],
     ).toEqual({ status: "sent", provider_message_id: "provider-id" });
   });
+  it("preserves an already-started plain-text reminder after a template upgrade", async () => {
+    const emailId = await dueReminder();
+    const frozen = {
+      from: "Warrantly <onboarding@resend.dev>",
+      to: "owner@example.invalid",
+      subject: "Original reminder",
+      text: "Original plain-text reminder",
+    };
+    await db
+      .update(schema.reminders)
+      .set({ deliveryPayload: frozen, deliveryStartedAt: new Date() })
+      .where(eq(schema.reminders.id, emailId));
+    await deliverReminder(emailId);
+    expect(dependencies.sendEmail.mock.calls[0]![0]).toEqual(frozen);
+  });
+
   it("retries a failed send with identical content even if bill details change", async () => {
     const emailId = await dueReminder();
     dependencies.sendEmail.mockRejectedValueOnce(new Error("Lost response"));
