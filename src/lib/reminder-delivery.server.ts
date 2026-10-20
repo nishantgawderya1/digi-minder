@@ -9,6 +9,9 @@ import { clerkClient } from "@clerk/tanstack-react-start/server";
 
 export async function dueEmailIds() {
   if (!emailConfigured()) return [];
+  const testRecipient = process.env["EMAIL_TEST_RECIPIENT"]
+    ?.trim()
+    .toLowerCase();
   const rows = await getDatabase()
     .select({ id: reminders.id })
     .from(reminders)
@@ -22,6 +25,9 @@ export async function dueEmailIds() {
         eq(reminders.channel, "email"),
         eq(reminders.status, "scheduled"),
         eq(appUsers.emailReminders, true),
+        testRecipient
+          ? sql`lower(${appUsers.email}) = ${testRecipient}`
+          : undefined,
         sql`coalesce(${reminders.snoozedUntil},${reminders.remindAt}) <= now()`,
         sql`${reminders.deliveryLeaseUntil} IS NULL OR ${reminders.deliveryLeaseUntil} < now()`,
         sql`CASE WHEN ${reminders.deadlineType} = 'warranty' THEN ${items.warrantyExpiresAt} ELSE ${items.returnExpiresAt} END >= (now() AT TIME ZONE ${appUsers.timezone})::date`,
@@ -54,6 +60,11 @@ export async function deliverReminder(id: string) {
       ),
     );
   if (!entry || !entry.user.email) return { status: "skipped" };
+  const testRecipient = process.env["EMAIL_TEST_RECIPIENT"]
+    ?.trim()
+    .toLowerCase();
+  if (testRecipient && entry.user.email.toLowerCase() !== testRecipient)
+    return { status: "skipped" };
   const account = await clerkClient().users.getUser(entry.user.id);
   const address = account.emailAddresses.find(
     (value) =>

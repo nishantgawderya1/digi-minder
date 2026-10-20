@@ -91,7 +91,11 @@ Use Vercel's TanStack Start preset (`vercel.json`), with the repository root as 
 
 Keep Google as the only sign-in method in Clerk. Use the exact OAuth redirect URI supplied by the matching Clerk instance. Production Clerk keys, Google OAuth credentials and origins must refer to the same environment.
 
-Create an Inngest application, add its event/signing keys to Vercel, leave `INNGEST_DEV` unset or `0`, and sync `https://your-domain/api/inngest` in the Inngest dashboard. Confirm all four functions register and scheduled functions are enabled. Configure a verified sending domain in Resend, then add `RESEND_API_KEY` and `REMINDER_FROM_EMAIL`. `APP_BASE_URL` must be the deployed HTTPS origin for reminder links. Users opt in on Reminders; installing code alone does not enable email delivery.
+Create an Inngest application, add its event/signing keys to Vercel, leave `INNGEST_DEV` unset or `0`, and sync `https://your-domain/api/inngest` in the Inngest dashboard. Confirm all five functions register and scheduled functions are enabled. Configure a verified sending domain in Resend, then add `RESEND_API_KEY` and `REMINDER_FROM_EMAIL`. `APP_BASE_URL` must be the deployed HTTPS origin for reminder links. Users opt in on Reminders; installing code alone does not enable email delivery.
+
+For Gmail-only testing without a domain, use `Warrantly <onboarding@resend.dev>` as `REMINDER_FROM_EMAIL` and set `EMAIL_TEST_RECIPIENT` to the email used for your Resend account. This restricts welcome and reminder delivery to that verified account. Remove the restriction only after verifying a sending domain and updating the sender.
+
+Migration `0005_welcome_email` queues a one-time welcome for new app accounts after their first authenticated visit. Existing accounts are marked skipped, so deploying does not email previous customers. The five-minute scheduler dispatches welcomes and due reminders; welcome messages do not enable deadline reminder opt-in. Welcome retries keep identical payloads and provider idempotency keys, stop after five attempts, and stop ambiguous delivery retries before the provider's 24-hour idempotency window ends. Replies go to `nishantgawderya@gmail.com`.
 
 Storage must support HEAD, ranged GET, conditional CopyObject, PUT and DELETE. Configure bucket CORS for the exact deployed and local origins with PUT/GET/HEAD and Content-Type allowed; do not make the bucket public. Use a lifecycle policy to expire abandoned `users/*/pending/*` objects. Verify provider-specific lifecycle support before relying on it.
 

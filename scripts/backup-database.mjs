@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { neon } from "@neondatabase/serverless";
-import { readMigrationFiles } from "drizzle-orm/migrator";
+import { readProjectMigrationFiles } from "./migration-files.mjs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,7 +35,7 @@ await writeFile(
         tables.map((row, index) => [row.table_name, snapshot[index][0].rows]),
       ),
       journal: snapshot.at(-1)[0].rows,
-      migrations: readMigrationFiles({
+      migrations: readProjectMigrationFiles({
         migrationsFolder: "./src/db/migrations/generated",
       }),
     },

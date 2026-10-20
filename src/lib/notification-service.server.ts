@@ -82,6 +82,13 @@ export async function saveNotificationPreferences(
           "Verify your primary account email before enabling reminders.",
         );
       email = primary.emailAddress;
+      const testRecipient = process.env["EMAIL_TEST_RECIPIENT"]
+        ?.trim()
+        .toLowerCase();
+      if (testRecipient && email.toLowerCase() !== testRecipient)
+        throw new ServiceError(
+          "Email reminders are currently available only for the test account.",
+        );
     }
     const db = getDatabase();
     const [previous] = await db

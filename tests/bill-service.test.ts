@@ -90,6 +90,147 @@ import {
   actOnReminder,
 } from "@/lib/notification-service.server";
 import { dueEmailIds, deliverReminder } from "@/lib/reminder-delivery.server";
+import {
+  pendingWelcomeUserIds,
+  deliverWelcome,
+} from "@/lib/welcome-delivery.server";
+
+describe("one-time welcome emails", () => {
+  it("queues new accounts and sends only once with concurrent or repeated delivery", async () => {
+    expect(await pendingWelcomeUserIds()).toContain(userA);
+    await Promise.all([deliverWelcome(userA), deliverWelcome(userA)]);
+    await deliverWelcome(userA);
+    expect(dependencies.sendEmail).toHaveBeenCalledTimes(1);
+    expect(dependencies.sendEmail.mock.calls[0]![0]).toMatchObject({
+      to: "owner@example.invalid",
+      replyTo: "nishantgawderya@gmail.com",
+      subject: "Welcome to Warrantly — a quick hello from Nishant",
+    });
+    expect(dependencies.sendEmail.mock.calls[0]![0].text).toContain(
+      "https://warrantly.example.invalid/reminders",
+    );
+    expect(dependencies.sendEmail.mock.calls[0]![1].idempotencyKey).toBe(
+      `warrantly-welcome/${userA}`,
+    );
+    expect(await pendingWelcomeUserIds()).not.toContain(userA);
+    const [user] = await db
+      .select()
+      .from(schema.appUsers)
+      .where(eq(schema.appUsers.id, userA));
+    expect(user!.welcomeStatus).toBe("sent");
+    expect(user!.welcomeProviderId).toBe("provider-id");
+    expect(user!.emailReminders).toBe(false);
+  });
+
+  it("freezes content and reuses the idempotency key after an uncertain send", async () => {
+    dependencies.sendEmail.mockRejectedValueOnce(new Error("Lost response"));
+    await expect(deliverWelcome(userA)).rejects.toThrow(
+      "Welcome email delivery failed",
+    );
+    vi.stubEnv("APP_BASE_URL", "https://changed.example.invalid");
+    await deliverWelcome(userA);
+    expect(dependencies.sendEmail.mock.calls[0]![0]).toEqual(
+      dependencies.sendEmail.mock.calls[1]![0],
+    );
+    expect(dependencies.sendEmail.mock.calls[0]![1].idempotencyKey).toEqual(
+      dependencies.sendEmail.mock.calls[1]![1].idempotencyKey,
+    );
+  });
+
+  it("restricts testing and does not opt other accounts into email reminders", async () => {
+    vi.stubEnv("EMAIL_TEST_RECIPIENT", "someone-else@example.invalid");
+    expect(await deliverWelcome(userA)).toEqual({ status: "skipped" });
+    expect(
+      (
+        await saveNotificationPreferences({
+          emailReminders: true,
+          timezone: "UTC",
+          reminderHour: 9,
+        })
+      ).ok,
+    ).toBe(false);
+    expect(dependencies.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("requires a verified primary address and caps failed deliveries", async () => {
+    dependencies.clerkGetUser.mockResolvedValue({
+      primaryEmailAddressId: "primary",
+      emailAddresses: [],
+    });
+    for (let attempt = 0; attempt < 5; attempt++)
+      await expect(deliverWelcome(userA)).rejects.toThrow(
+        "Welcome email delivery failed",
+      );
+    expect(await deliverWelcome(userA)).toEqual({ status: "skipped" });
+    expect(await pendingWelcomeUserIds()).not.toContain(userA);
+    expect(dependencies.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("does not retry ambiguous sends after the provider deduplication window", async () => {
+    await pg.query(
+      "UPDATE app_users SET welcome_started_at=now()-interval '24 hours' WHERE id=$1",
+      [userA],
+    );
+    expect(await deliverWelcome(userA)).toEqual({ status: "failed" });
+    expect(dependencies.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("does not replay a pending payload to a changed primary email", async () => {
+    dependencies.sendEmail.mockRejectedValueOnce(new Error("Lost response"));
+    await expect(deliverWelcome(userA)).rejects.toThrow();
+    dependencies.clerkGetUser.mockResolvedValue({
+      primaryEmailAddressId: "new",
+      emailAddresses: [
+        {
+          id: "new",
+          emailAddress: "new@example.invalid",
+          verification: { status: "verified" },
+        },
+      ],
+    });
+    expect(await deliverWelcome(userA)).toEqual({ status: "skipped" });
+    expect(dependencies.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not dispatch when email is unconfigured", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    expect(await pendingWelcomeUserIds()).toEqual([]);
+    expect(await deliverWelcome(userA)).toEqual({ status: "unconfigured" });
+    expect(dependencies.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("migration excludes existing accounts without changing their data", async () => {
+    const isolated = new PGlite();
+    try {
+      const migrations = readMigrationFiles({
+        migrationsFolder: "./src/db/migrations/generated",
+      });
+      for (const migration of migrations.slice(0, -1))
+        await isolated.exec(migration.sql.join(";\n"));
+      await isolated.query(
+        "INSERT INTO app_users(id,email) VALUES('existing','existing@example.invalid')",
+      );
+      await isolated.exec(migrations.at(-1)!.sql.join(";\n"));
+      await isolated.query("INSERT INTO app_users(id) VALUES('new')");
+      expect(
+        (
+          await isolated.query(
+            "SELECT id,email,welcome_status FROM app_users ORDER BY id",
+          )
+        ).rows,
+      ).toEqual([
+        {
+          id: "existing",
+          email: "existing@example.invalid",
+          welcome_status: "skipped",
+        },
+        { id: "new", email: null, welcome_status: "pending" },
+      ]);
+    } finally {
+      await isolated.close();
+    }
+  });
+});
 
 // Exercise the real Neon Drizzle query builder and batch mapping against isolated Postgres.
 const pg = new PGlite();
@@ -185,6 +326,7 @@ beforeEach(async () => {
   vi.stubEnv("RESEND_API_KEY", "test-key-not-real");
   vi.stubEnv("REMINDER_FROM_EMAIL", "Warrantly <reminders@example.invalid>");
   vi.stubEnv("APP_BASE_URL", "https://warrantly.example.invalid");
+  vi.stubEnv("EMAIL_TEST_RECIPIENT", "");
   dependencies.answerFromBills.mockResolvedValue({
     answer: "Grounded answer",
     sources: [],

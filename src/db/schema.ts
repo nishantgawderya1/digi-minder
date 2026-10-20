@@ -18,6 +18,20 @@ import { sql } from "drizzle-orm";
 export const appUsers = pgTable("app_users", {
   id: text("id").primaryKey(),
   email: text("email"),
+  welcomeStatus: text("welcome_status").default("pending").notNull(),
+  welcomeAttempts: integer("welcome_attempts").default(0).notNull(),
+  welcomeLeaseUntil: timestamp("welcome_lease_until", { withTimezone: true }),
+  welcomeStartedAt: timestamp("welcome_started_at", { withTimezone: true }),
+  welcomeSentAt: timestamp("welcome_sent_at", { withTimezone: true }),
+  welcomeProviderId: text("welcome_provider_id"),
+  welcomeError: text("welcome_error"),
+  welcomePayload: jsonb("welcome_payload").$type<{
+    from: string;
+    to: string;
+    replyTo: string;
+    subject: string;
+    text: string;
+  }>(),
   emailReminders: boolean("email_reminders").default(false).notNull(),
   timezone: text("timezone").default("UTC").notNull(),
   reminderHour: integer("reminder_hour").default(9).notNull(),

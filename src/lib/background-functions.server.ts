@@ -10,6 +10,10 @@ import {
   extractProcessedDocument,
 } from "./document-worker.server";
 import { dueEmailIds, deliverReminder } from "./reminder-delivery.server";
+import {
+  pendingWelcomeUserIds,
+  deliverWelcome,
+} from "./welcome-delivery.server";
 
 const documentEvent = z.object({
   documentId: z.string().uuid(),
@@ -62,6 +66,15 @@ export const scheduleEmails = inngest.createFunction(
     concurrency: 1,
   },
   async ({ step }) => {
+    const users = await step.run("find-welcome-emails", pendingWelcomeUserIds);
+    if (users.length)
+      await step.sendEvent(
+        "dispatch-welcome-emails",
+        users.map((userId) => ({
+          name: "warrantly/welcome.due",
+          data: { userId },
+        })),
+      );
     const ids = await step.run("find-due", dueEmailIds);
     if (ids.length)
       await step.sendEvent(
@@ -83,9 +96,22 @@ export const sendReminder = inngest.createFunction(
     return step.run("deliver-email", () => deliverReminder(id));
   },
 );
+export const sendWelcome = inngest.createFunction(
+  {
+    id: "send-welcome-email",
+    triggers: [{ event: "warrantly/welcome.due" }],
+    retries: 4,
+    concurrency: { limit: 1, key: "event.data.userId" },
+  },
+  async ({ event, step }) => {
+    const userId = z.string().min(1).parse(event.data["userId"]);
+    return step.run("deliver-welcome", () => deliverWelcome(userId));
+  },
+);
 export const backgroundFunctions = [
   processDocument,
   recoverDispatches,
   scheduleEmails,
   sendReminder,
+  sendWelcome,
 ];

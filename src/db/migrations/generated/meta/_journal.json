@@ -36,6 +36,13 @@
       "when": 1790970845603,
       "tag": "0004_background_review_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792489821358,
+      "tag": "0005_welcome_email",
+      "breakpoints": true
     }
   ]
 }

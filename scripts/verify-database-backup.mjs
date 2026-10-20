@@ -1,12 +1,19 @@
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import { matchesMigrationHistory } from "./migration-files.mjs";
 
 if (!process.argv[2]) throw new Error("Pass the database snapshot path.");
 const backup = JSON.parse(await readFile(process.argv[2], "utf8"));
 const pg = new PGlite();
 try {
   for (const migration of backup.migrations) {
-    if (backup.journal.some((row) => row.hash === migration.hash))
+    if (
+      backup.journal.some((row) =>
+        migration.compatibleHashes
+          ? matchesMigrationHistory(migration, row)
+          : row.hash === migration.hash,
+      )
+    )
       await pg.exec(migration.sql.join(";\n"));
   }
   let records = 0;
