@@ -52,19 +52,17 @@ function Landing() {
   return (
     <div className="min-h-screen bg-secondary">
       <div className="mx-auto w-full max-w-[1280px] border-x border-border bg-background pb-16">
-        <header className="flex items-center justify-between border-b border-border px-5 py-4 lg:px-10">
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3 border-b border-border px-5 py-4 lg:px-10">
           <span className="font-display text-lg font-extrabold tracking-tight">
             Warrantly
           </span>
-          <div className="flex items-center gap-2">
-            <InstallApp className="[&>span]:hidden sm:[&>span]:inline" />
-            <Link
-              to="/auth"
-              className="rounded-sm border border-foreground px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
-            >
-              Sign in
-            </Link>
-          </div>
+          <InstallApp className="order-3 w-full sm:order-none sm:ml-auto sm:w-auto" />
+          <Link
+            to="/auth"
+            className="rounded-sm border border-foreground px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
+          >
+            Sign in
+          </Link>
         </header>
 
         <section className="hatch grid gap-8 border-b border-border px-5 py-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end lg:px-10 lg:py-16">

@@ -197,10 +197,8 @@ export function ScreenHeader({
           </p>
         ) : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <InstallApp compact className="lg:hidden" />
-        {right}
-      </div>
+      <div className="flex shrink-0 items-center gap-2">{right}</div>
+      <InstallApp className="col-span-2 w-full sm:w-fit lg:hidden" />
     </header>
   );
 }

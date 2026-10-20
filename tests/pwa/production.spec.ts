@@ -36,9 +36,7 @@ test("production install assets and private navigation work offline without cach
     "href",
     "/manifest.webmanifest",
   );
-  await expect(
-    page.getByRole("button", { name: "Install Warrantly" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Install app" })).toBeVisible();
   const response = await page.request.get("/manifest.webmanifest");
   const manifest = await response.json();
   expect(manifest.display).toBe("standalone");

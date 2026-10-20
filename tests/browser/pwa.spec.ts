@@ -4,9 +4,12 @@ test("install option explains the browser steps and closes accessibly", async ({
   page,
 }, info) => {
   await page.goto("/home");
-  await page
-    .getByRole("button", { name: "Install Warrantly", exact: true })
-    .click();
+  const install = page.getByRole("button", {
+    name: "Install app",
+    exact: true,
+  });
+  await expect(install.getByText("Install app", { exact: true })).toBeVisible();
+  await install.click();
   const dialog = page.getByRole("dialog", { name: "Warrantly, one tap away" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("bills and AI tools still need internet");
@@ -21,7 +24,7 @@ test("install option explains the browser steps and closes accessibly", async ({
   await dialog.getByRole("button", { name: "Got it" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Install Warrantly", exact: true }),
+    page.getByRole("button", { name: "Install app", exact: true }),
   ).toBeFocused();
 });
 
@@ -30,7 +33,7 @@ test("native install is user-initiated and the option disappears after installat
 }) => {
   await page.goto("/home");
   await expect(
-    page.getByRole("button", { name: "Install Warrantly", exact: true }),
+    page.getByRole("button", { name: "Install app", exact: true }),
   ).toBeVisible();
   await page.evaluate(() => {
     const event = new Event("beforeinstallprompt", { cancelable: true });
@@ -45,16 +48,14 @@ test("native install is user-initiated and the option disappears after installat
   expect(
     await page.evaluate(() => sessionStorage.getItem("install-prompted")),
   ).toBeNull();
-  await page
-    .getByRole("button", { name: "Install Warrantly", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Install app", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => sessionStorage.getItem("install-prompted")))
     .toBe("yes");
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
   await expect(
-    page.getByRole("button", { name: "Install Warrantly", exact: true }),
+    page.getByRole("button", { name: "Install app", exact: true }),
   ).toHaveCount(0);
 });
 
@@ -73,6 +74,6 @@ test("installed standalone mode does not offer installation again", async ({
     page.getByRole("heading", { name: "Hello, Test" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Install Warrantly", exact: true }),
+    page.getByRole("button", { name: "Install app", exact: true }),
   ).toHaveCount(0);
 });

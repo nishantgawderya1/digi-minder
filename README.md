@@ -57,7 +57,7 @@ Only `VITE_CLERK_PUBLISHABLE_KEY` is browser-visible. Never prefix a secret with
 
 ## Installable app and responsiveness
 
-Use **Install app** in the desktop sidebar or the install icon beside a mobile screen title. The landing page also offers installation. Chrome and Edge can show their native install prompt; iPhone and iPad users receive Safari **Share → Add to Home Screen** instructions. The installed app opens in its own window with shortcuts to capture and the vault.
+Use the labeled **Install app** button in the desktop sidebar or below a mobile screen title. The landing page also offers a full-width install button on small screens. Chrome and Edge can show their native install prompt; iPhone and iPad users receive Safari **Share → Add to Home Screen** instructions. The installed app opens in its own window with shortcuts to capture and the vault.
 
 The service worker registers after the initial render in production over HTTPS or localhost; it stays disabled during Vite development. It caches only public PWA files and fingerprinted app assets. Bills, account pages, server functions, API responses and signed document URLs remain network-only. Offline navigation shows a reconnection page. Updates wait for an explicit reload, with a reminder to save edits first; a bounded previous-release asset cache supports other open tabs.
 

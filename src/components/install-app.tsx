@@ -4,13 +4,7 @@ import { usePwa } from "@/lib/pwa-context";
 import { isAppleMobile } from "@/lib/pwa";
 import { cn } from "@/lib/utils";
 
-export function InstallApp({
-  className,
-  compact = false,
-}: {
-  className?: string;
-  compact?: boolean;
-}) {
+export function InstallApp({ className }: { className?: string }) {
   const { installed, requestInstall } = usePwa();
   const titleId = useId();
   const descriptionId = useId();
@@ -33,9 +27,8 @@ export function InstallApp({
       <button
         type="button"
         title="Install Warrantly"
-        aria-label="Install Warrantly"
         className={cn(
-          "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           className,
         )}
         onClick={async () => {
@@ -43,8 +36,8 @@ export function InstallApp({
             setShowInstructions(true);
         }}
       >
-        <Download className="size-4" aria-hidden="true" />
-        {!compact && <span>Install app</span>}
+        <Download className="size-4 shrink-0" aria-hidden="true" />
+        <span>Install app</span>
       </button>
       <dialog
         ref={dialog}
