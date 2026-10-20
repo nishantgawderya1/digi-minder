@@ -36,6 +36,9 @@ async function interceptUpload(page: Page, beforeFulfill?: Promise<void>) {
   });
 }
 async function upload(page: Page) {
+  await expect(
+    page.getByRole("button", { name: "Image", exact: true }),
+  ).toBeVisible();
   await interceptUpload(page);
   await page.getByLabel("Choose a bill image").setInputFiles({
     name: "bill.png",

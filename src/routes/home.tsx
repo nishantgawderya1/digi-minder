@@ -14,12 +14,10 @@ import {
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
 import { BillCard } from "@/components/bill-card";
-import { requireCurrentUser } from "@/lib/route-auth";
 import { loadVault, unwrap } from "@/lib/bill-functions";
 import { displayDate, totalsByCurrency, warrantyState } from "@/lib/bills";
 
 export const Route = createFileRoute("/home")({
-  beforeLoad: () => requireCurrentUser(),
   loader: async () => unwrap(await loadVault()),
   component: HomeScreen,
 });

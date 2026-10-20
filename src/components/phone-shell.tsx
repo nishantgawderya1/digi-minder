@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Bell, Bot, Home, Plus, ShieldCheck, Wallet } from "lucide-react";
 import { UserButton } from "@clerk/tanstack-react-start";
 import type { ReactNode } from "react";
+import { InstallApp } from "@/components/install-app";
 
 const tabs = [
   { to: "/home", label: "Today", icon: Home },
@@ -50,7 +51,7 @@ export function PhoneShell({
 
 function DesktopRail() {
   return (
-    <aside className="sticky top-0 hidden h-screen border-r border-border bg-sidebar px-5 py-8 lg:flex lg:flex-col">
+    <aside className="sticky top-0 hidden h-screen overflow-y-auto border-r border-border bg-sidebar px-5 py-8 lg:flex lg:flex-col">
       <Link
         to="/home"
         className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight"
@@ -76,6 +77,7 @@ function DesktopRail() {
         </Link>
       </nav>
       <div className="mt-auto">
+        <InstallApp className="mb-3 w-full justify-start" />
         <div className="mb-5 rounded-sm bg-secondary/65 p-3.5">
           <ShieldCheck className="mb-2 h-5 w-5 text-primary" />
           <p className="text-xs font-semibold">A little less paperwork.</p>
@@ -195,7 +197,10 @@ export function ScreenHeader({
           </p>
         ) : null}
       </div>
-      {right}
+      <div className="flex shrink-0 items-center gap-2">
+        <InstallApp compact className="lg:hidden" />
+        {right}
+      </div>
     </header>
   );
 }

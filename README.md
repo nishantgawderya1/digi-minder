@@ -55,6 +55,16 @@ Only `VITE_CLERK_PUBLISHABLE_KEY` is browser-visible. Never prefix a secret with
 
 `DATABASE_URL_POOLED`, `CLERK_WEBHOOK_SIGNING_SECRET` and `NEON_AI_GATEWAY_*` are reserved and are not used by this workflow. Local `.env` values do not populate Vercel: set the NVIDIA key in the correct Production/Preview environment and redeploy. The existing OCR key can also authenticate extraction/chat at the default NVIDIA LLM endpoint. Custom LLM endpoints require an explicit `NVIDIA_LLM_API_KEY`; shared/fallback keys are never forwarded there. Real bills used for debugging belong in the ignored `sample folder`, never `public` or committed test fixtures.
 
+## Installable app and responsiveness
+
+Use **Install app** in the desktop sidebar or the install icon beside a mobile screen title. The landing page also offers installation. Chrome and Edge can show their native install prompt; iPhone and iPad users receive Safari **Share → Add to Home Screen** instructions. The installed app opens in its own window with shortcuts to capture and the vault.
+
+The service worker registers after the initial render in production over HTTPS or localhost; it stays disabled during Vite development. It caches only public PWA files and fingerprinted app assets. Bills, account pages, server functions, API responses and signed document URLs remain network-only. Offline navigation shows a reconnection page. Updates wait for an explicit reload, with a reminder to save edits first; a bounded previous-release asset cache supports other open tabs.
+
+Every data loader still authenticates and checks ownership on the server. Page navigation avoids a duplicate session/database request, intent preloading warms route code, and local filters retain URL/history behavior without another service request. Immediate navigation feedback and a shared `src/components/loading.tsx` skeleton cover pending loads. The skeleton appears after 120 ms and adds no minimum display delay; requests themselves still depend on network and provider latency.
+
+To verify the production PWA, build first, then run `npm run test:pwa`. Its Chrome tests launch the built server on port 4180 and check install assets, offline privacy, deferred updates and two-tab update behavior. `npm run test:e2e` covers the desktop/mobile flows and includes tests with delayed service responses. For a manual production preview, run `npm run preview` after building; development mode intentionally does not install a service worker.
+
 ## Database and security
 
 - Server operations derive account identity from Clerk, never request-supplied owner IDs. Bills, drafts, OCR pages, signed downloads, edits and deletes are owner-scoped.

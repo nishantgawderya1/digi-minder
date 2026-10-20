@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, Bell, Bot, ScanLine, ShieldCheck } from "lucide-react";
+import { InstallApp } from "@/components/install-app";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -55,12 +56,15 @@ function Landing() {
           <span className="font-display text-lg font-extrabold tracking-tight">
             Warrantly
           </span>
-          <Link
-            to="/auth"
-            className="rounded-sm border border-foreground px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
-          >
-            Sign in
-          </Link>
+          <div className="flex items-center gap-2">
+            <InstallApp className="[&>span]:hidden sm:[&>span]:inline" />
+            <Link
+              to="/auth"
+              className="rounded-sm border border-foreground px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
+            >
+              Sign in
+            </Link>
+          </div>
         </header>
 
         <section className="hatch grid gap-8 border-b border-border px-5 py-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end lg:px-10 lg:py-16">

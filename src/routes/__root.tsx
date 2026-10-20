@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { ClerkProvider } from "@clerk/tanstack-react-start";
+import { NavigationFeedback } from "@/components/navigation-feedback";
+import { PwaProvider } from "@/components/pwa-provider";
 
 import appCss from "../styles.css?url";
 
@@ -97,6 +99,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
             "Scan bills and warranty cards, get reminded before cover ends, and let the assistant draft the escalation for you.",
         },
         { name: "author", content: "Warrantly" },
+        { name: "theme-color", content: "#28745f" },
+        { name: "mobile-web-app-capable", content: "yes" },
+        { name: "apple-mobile-web-app-capable", content: "yes" },
+        { name: "apple-mobile-web-app-title", content: "Warrantly" },
         { property: "og:title", content: "Warrantly" },
         {
           property: "og:description",
@@ -121,6 +127,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           href: "https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Figtree:wght@400;500;600;700&display=swap",
         },
         { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+        { rel: "manifest", href: "/manifest.webmanifest" },
+        {
+          rel: "apple-touch-icon",
+          href: "/icons/apple-touch-icon.png",
+          sizes: "180x180",
+        },
       ],
     }),
 
@@ -150,7 +162,10 @@ function RootComponent() {
   const publishableKey = import.meta.env["VITE_CLERK_PUBLISHABLE_KEY"];
   const app = (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <PwaProvider>
+        <NavigationFeedback />
+        <Outlet />
+      </PwaProvider>
     </QueryClientProvider>
   );
 

@@ -12,14 +12,12 @@ import {
 } from "lucide-react";
 import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
 import { BillCard } from "@/components/bill-card";
-import { requireCurrentUser } from "@/lib/route-auth";
 import { loadVault, unwrap } from "@/lib/bill-functions";
 import { categories, warrantyState } from "@/lib/bills";
 
 type WarrantyFilter = "active" | "ending" | "expired" | "unknown";
 
 export const Route = createFileRoute("/vault")({
-  beforeLoad: () => requireCurrentUser(),
   validateSearch: (
     search: Record<string, unknown>,
   ): { status?: WarrantyFilter | undefined } => ({

@@ -8,7 +8,6 @@ import {
 import { ArrowLeft, Download, FileText, Pencil, Trash2, X } from "lucide-react";
 import { PhoneShell, ScreenHeader, StatusChip } from "@/components/phone-shell";
 import { BillForm } from "@/components/bill-form";
-import { requireCurrentUser } from "@/lib/route-auth";
 import {
   getDocumentLink,
   loadBill,
@@ -25,7 +24,6 @@ import {
 } from "@/lib/bills";
 
 export const Route = createFileRoute("/item/$itemId")({
-  beforeLoad: () => requireCurrentUser(),
   loader: async ({ params }) =>
     unwrap(await loadBill({ data: { id: params.itemId } })),
   component: ItemScreen,

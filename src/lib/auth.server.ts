@@ -3,7 +3,7 @@ import { redirect } from "@tanstack/react-router";
 import { getDatabase } from "@/db/index.server";
 import { appUsers } from "@/db/schema";
 
-export async function getAuthenticatedUserId() {
+export async function getSessionUserId() {
   if (
     !process.env["CLERK_SECRET_KEY"] ||
     !process.env["VITE_CLERK_PUBLISHABLE_KEY"]
@@ -13,6 +13,12 @@ export async function getAuthenticatedUserId() {
 
   const { userId } = await auth();
   if (!userId) throw redirect({ to: "/auth" });
+
+  return userId;
+}
+
+export async function getAuthenticatedUserId() {
+  const userId = await getSessionUserId();
 
   await getDatabase()
     .insert(appUsers)

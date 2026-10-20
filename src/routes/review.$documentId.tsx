@@ -27,12 +27,10 @@ import {
   queueReading,
 } from "@/lib/bill-functions";
 import { prepareDocument, readPreparedDocument } from "@/lib/document-client";
-import { requireCurrentUser } from "@/lib/route-auth";
 import type { BillFields } from "@/lib/bills";
 import { useDraftAutosave } from "@/hooks/use-draft-autosave";
 
 export const Route = createFileRoute("/review/$documentId")({
-  beforeLoad: () => requireCurrentUser(),
   loader: async ({ params }) => {
     const data = unwrap(await loadReview({ data: { id: params.documentId } }));
     if (data.itemId)

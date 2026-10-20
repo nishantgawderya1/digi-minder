@@ -15,7 +15,6 @@ import {
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
-import { requireCurrentUser } from "@/lib/route-auth";
 import {
   loadNotifications,
   saveNotificationPreferences,
@@ -25,7 +24,6 @@ import { unwrap } from "@/lib/bill-functions";
 import type { NotificationPreferences } from "@/lib/notifications";
 
 export const Route = createFileRoute("/reminders")({
-  beforeLoad: () => requireCurrentUser(),
   loader: async () => unwrap(await loadNotifications()),
   component: RemindersScreen,
 });

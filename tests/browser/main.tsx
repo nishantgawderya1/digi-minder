@@ -12,9 +12,19 @@ import { Route as review } from "@/routes/review.$documentId";
 import { Route as item } from "@/routes/item.$itemId";
 import { Route as agent } from "@/routes/agent";
 import { Route as reminders } from "@/routes/reminders";
+import { navigationOptions } from "@/router-options";
+import { NavigationFeedback } from "@/components/navigation-feedback";
+import { PwaProvider } from "@/components/pwa-provider";
 import "@/styles.css";
 
-const root = createRootRoute({ component: Outlet });
+const root = createRootRoute({
+  component: () => (
+    <PwaProvider>
+      <NavigationFeedback />
+      <Outlet />
+    </PwaProvider>
+  ),
+});
 const routes = [
   [home, "/home"],
   [vault, "/vault"],
@@ -30,7 +40,11 @@ const routeTree = root.addChildren(
     route.update({ id: path, path, getParentRoute: () => root }),
   ),
 );
-const router = createRouter({ routeTree, scrollRestoration: true });
+const router = createRouter({
+  routeTree,
+  scrollRestoration: true,
+  ...navigationOptions,
+});
 createRoot(document.getElementById("root")!).render(
   <RouterProvider router={router} />,
 );

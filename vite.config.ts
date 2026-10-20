@@ -4,6 +4,7 @@ import { nitro } from "nitro/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 import { pdfAssets } from "./scripts/pdf-assets";
+import { pwaAssets } from "./scripts/pwa-assets";
 
 export default defineConfig(({ mode }) => {
   Object.assign(process.env, loadEnv(mode, process.cwd(), ""));
@@ -11,6 +12,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       ...pdfAssets(),
+      pwaAssets(),
       tailwindcss(),
       tanstackStart({
         server: { entry: "server" },

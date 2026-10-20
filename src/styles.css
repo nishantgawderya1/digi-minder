@@ -165,6 +165,16 @@
     cursor: pointer;
   }
 
+  /* Keep pinch zoom while removing the double-tap delay on touch controls. */
+  :where(a[href], button, [role="button"], summary) {
+    touch-action: manipulation;
+  }
+
+  :where(button:not(:disabled), a[href]):active {
+    opacity: 0.8;
+    transition-duration: 0ms;
+  }
+
   :where(a, button, input, select, textarea, summary):focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 3px;

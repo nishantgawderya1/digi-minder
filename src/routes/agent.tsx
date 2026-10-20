@@ -3,7 +3,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Check, Copy, FilePenLine, MessageSquare, Plus } from "lucide-react";
 import { z } from "zod";
 import { PhoneShell, ScreenHeader } from "@/components/phone-shell";
-import { requireCurrentUser } from "@/lib/route-auth";
 import { loadVault, unwrap } from "@/lib/bill-functions";
 import { supportDraft } from "@/lib/support-draft";
 import { AssistantChat } from "@/components/assistant-chat";
@@ -14,7 +13,6 @@ export const Route = createFileRoute("/agent")({
     itemId: z.string().uuid().optional().catch(undefined),
     tab: z.enum(["chat", "draft"]).optional().catch(undefined),
   }),
-  beforeLoad: () => requireCurrentUser(),
   loader: async () => unwrap(await loadVault()),
   component: AgentScreen,
 });

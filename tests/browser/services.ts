@@ -2,6 +2,7 @@ import { emptyBillFields, type Bill, type BillFields } from "@/lib/bills";
 import { extractBillFields } from "@/lib/ocr";
 import { prepareDocument, readPreparedDocument } from "@/lib/document-client";
 import type { DraftPatch } from "@/lib/review";
+import { simulateRequest } from "./latency";
 
 const id = "ab096c6d-c5c6-42c7-959a-0f3d46591a4f";
 const picture =
@@ -40,6 +41,7 @@ export function unwrap<T>(
   return result.data;
 }
 export const loadVault = async () => {
+  await simulateRequest("vault");
   const data = state();
   return ok({
     bills: data.bills,
