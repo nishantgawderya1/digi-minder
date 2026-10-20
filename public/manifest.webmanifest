@@ -9,6 +9,10 @@
   "display": "standalone",
   "background_color": "#fffaf0",
   "theme_color": "#28745f",
+  "prefer_related_applications": false,
+  "related_applications": [
+    { "platform": "webapp", "url": "/manifest.webmanifest", "id": "/" }
+  ],
   "categories": ["productivity", "utilities"],
   "icons": [
     {

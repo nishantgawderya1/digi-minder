@@ -8,34 +8,94 @@ import {
 } from "react";
 import { PwaContext, type InstallPromptEvent } from "@/lib/pwa-context";
 import { isStandalone, schedulePwaRegistration } from "@/lib/pwa";
+import {
+  INSTALL_PREFERENCE_KEY,
+  detectInstalledRelatedApp,
+  readInstallPreference,
+  rememberInstallPreference,
+  type InstallPreference,
+} from "@/lib/pwa-install-preferences";
 
 export function PwaProvider({ children }: { children: ReactNode }) {
   const deferredPrompt = useRef<InstallPromptEvent | null>(null);
   const reloadRequested = useRef(false);
-  const [installed, setInstalled] = useState(false);
+  const preferenceRef = useRef<InstallPreference | null>(null);
+  const installingRef = useRef(false);
+  const [preference, setPreference] = useState<InstallPreference | null>(null);
+  const [installReady, setInstallReady] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [canPromptInstall, setCanPromptInstall] = useState(false);
   const [update, setUpdate] = useState<ServiceWorkerRegistration | null>(null);
   const [dismissedUpdate, setDismissedUpdate] = useState(false);
 
+  const rememberPreference = useCallback((reason: InstallPreference) => {
+    const next = rememberInstallPreference(
+      preferenceRef.current === "installed" ? "installed" : reason,
+    );
+    preferenceRef.current = next;
+    setPreference(next);
+    deferredPrompt.current = null;
+    setCanPromptInstall(false);
+  }, []);
+  const dismissInstall = useCallback(
+    () => rememberPreference("dismissed"),
+    [rememberPreference],
+  );
+  const acknowledgeInstalled = useCallback(
+    () => rememberPreference("acknowledged"),
+    [rememberPreference],
+  );
+
   useEffect(() => {
+    let active = true;
+    let checkingInstalled = false;
     const displayMode = window.matchMedia("(display-mode: standalone)");
-    const updateInstalled = () => setInstalled(isStandalone());
-    updateInstalled();
+    const syncPreference = () => {
+      const saved = readInstallPreference();
+      if (saved && preferenceRef.current !== "installed") {
+        preferenceRef.current = saved;
+        setPreference(saved);
+        deferredPrompt.current = null;
+        setCanPromptInstall(false);
+      }
+    };
+    const updateInstalled = () => {
+      if (isStandalone()) rememberPreference("installed");
+    };
+    const checkInstalled = async () => {
+      syncPreference();
+      updateInstalled();
+      // Remembered choices render without waiting for browser discovery.
+      if (preferenceRef.current) setInstallReady(true);
+      if (checkingInstalled) return;
+      checkingInstalled = true;
+      const detected = await detectInstalledRelatedApp();
+      checkingInstalled = false;
+      if (!active) return;
+      if (detected) rememberPreference("installed");
+      setInstallReady(true);
+    };
     const beforeInstall = (event: Event) => {
       event.preventDefault();
+      if (preferenceRef.current) return;
       deferredPrompt.current = event as InstallPromptEvent;
       setCanPromptInstall(true);
     };
-    const appInstalled = () => {
-      deferredPrompt.current = null;
-      setCanPromptInstall(false);
-      setInstalled(true);
+    const appInstalled = () => rememberPreference("installed");
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === INSTALL_PREFERENCE_KEY || event.key === null)
+        syncPreference();
+    };
+    const visibilityChanged = () => {
+      if (document.visibilityState === "visible") void checkInstalled();
     };
     const controllerChanged = () => {
       if (reloadRequested.current) window.location.reload();
     };
     window.addEventListener("beforeinstallprompt", beforeInstall);
     window.addEventListener("appinstalled", appInstalled);
+    window.addEventListener("storage", storageChanged);
+    document.addEventListener("visibilitychange", visibilityChanged);
     displayMode.addEventListener("change", updateInstalled);
     navigator.serviceWorker?.addEventListener(
       "controllerchange",
@@ -45,9 +105,13 @@ export function PwaProvider({ children }: { children: ReactNode }) {
       setDismissedUpdate(false);
       setUpdate(registration);
     });
+    void checkInstalled();
     return () => {
+      active = false;
       window.removeEventListener("beforeinstallprompt", beforeInstall);
       window.removeEventListener("appinstalled", appInstalled);
+      window.removeEventListener("storage", storageChanged);
+      document.removeEventListener("visibilitychange", visibilityChanged);
       displayMode.removeEventListener("change", updateInstalled);
       navigator.serviceWorker?.removeEventListener(
         "controllerchange",
@@ -55,24 +119,49 @@ export function PwaProvider({ children }: { children: ReactNode }) {
       );
       cancelRegistration();
     };
-  }, []);
+  }, [rememberPreference]);
 
   const requestInstall = useCallback(async () => {
+    if (installingRef.current || preferenceRef.current) return "busy" as const;
     const prompt = deferredPrompt.current;
     if (!prompt) return "unavailable" as const;
     deferredPrompt.current = null;
     setCanPromptInstall(false);
+    installingRef.current = true;
+    setInstalling(true);
     try {
       await prompt.prompt();
-      return (await prompt.userChoice).outcome;
+      const { outcome } = await prompt.userChoice;
+      rememberPreference(outcome);
+      return outcome;
     } catch {
       return "unavailable" as const;
+    } finally {
+      installingRef.current = false;
+      setInstalling(false);
     }
-  }, []);
+  }, [rememberPreference]);
 
   const value = useMemo(
-    () => ({ installed, canPromptInstall, requestInstall }),
-    [installed, canPromptInstall, requestInstall],
+    () => ({
+      installed: preference === "installed",
+      installReady,
+      installSuppressed: preference !== null,
+      installing,
+      canPromptInstall,
+      requestInstall,
+      dismissInstall,
+      acknowledgeInstalled,
+    }),
+    [
+      preference,
+      installReady,
+      installing,
+      canPromptInstall,
+      requestInstall,
+      dismissInstall,
+      acknowledgeInstalled,
+    ],
   );
 
   return (

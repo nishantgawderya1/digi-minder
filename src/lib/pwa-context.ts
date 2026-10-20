@@ -7,13 +7,25 @@ export interface InstallPromptEvent extends Event {
 
 export interface PwaContextValue {
   installed: boolean;
+  installReady: boolean;
+  installSuppressed: boolean;
+  installing: boolean;
   canPromptInstall: boolean;
-  requestInstall: () => Promise<"accepted" | "dismissed" | "unavailable">;
+  dismissInstall: () => void;
+  acknowledgeInstalled: () => void;
+  requestInstall: () => Promise<
+    "accepted" | "dismissed" | "unavailable" | "busy"
+  >;
 }
 
 export const PwaContext = createContext<PwaContextValue>({
   installed: false,
+  installReady: false,
+  installSuppressed: false,
+  installing: false,
   canPromptInstall: false,
+  dismissInstall: () => {},
+  acknowledgeInstalled: () => {},
   requestInstall: async () => "unavailable",
 });
 

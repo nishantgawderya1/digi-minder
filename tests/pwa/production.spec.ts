@@ -36,11 +36,19 @@ test("production install assets and private navigation work offline without cach
     "href",
     "/manifest.webmanifest",
   );
-  await expect(page.getByRole("button", { name: "Install app" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Install app", exact: true }),
+  ).toBeVisible();
   const response = await page.request.get("/manifest.webmanifest");
   const manifest = await response.json();
   expect(manifest.display).toBe("standalone");
   expect(manifest.start_url).toBe("/home");
+  expect(manifest.prefer_related_applications).toBe(false);
+  expect(manifest.related_applications).toContainEqual({
+    platform: "webapp",
+    url: "/manifest.webmanifest",
+    id: "/",
+  });
   for (const icon of manifest.icons) {
     const result = await page.request.get(icon.src);
     expect(result.ok()).toBe(true);
