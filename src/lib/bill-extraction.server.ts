@@ -34,7 +34,14 @@ import {
 } from "./extraction-field-evidence";
 
 const MAX_TEXT = 60_000;
-export const EXTRACTION_VERSION = 4;
+export const EXTRACTION_VERSION = 5;
+const currencyAliases: Record<string, RegExp> = {
+  INR: /\bINR\b|\bRs\.?\b|₹/i,
+  USD: /\bUSD\b|US\$/i,
+  EUR: /\bEUR\b|€/i,
+  GBP: /\bGBP\b|£/i,
+  IDR: /\bIDR\b|\bRp\.?(?=\s|\d|$)/i,
+};
 type FieldKey = Exclude<keyof BillFields, "reminderDays">;
 type FieldIssue =
   "missing" | "absent" | "ambiguous" | "unreadable" | "rejected";
@@ -173,17 +180,10 @@ export function validateExtraction(
         continue;
       }
     } else if (key === "currency") {
-      const aliases: Record<string, RegExp> = {
-        INR: /\bINR\b|\bRs\.?\b|₹/i,
-        USD: /\bUSD\b|US\$/i,
-        EUR: /\bEUR\b|€/i,
-        GBP: /\bGBP\b|£/i,
-        IDR: /\bIDR\b|\bRp\.?(?=\s|\d|$)/i,
-      };
       if (
         typeof value !== "string" ||
         !(
-          aliases[value]?.test(quote) ??
+          currencyAliases[value]?.test(quote) ??
           normalized(quote).includes(normalized(value))
         )
       ) {
@@ -240,6 +240,24 @@ export function validateExtraction(
     fields = { ...fields, [key]: valid.data };
     evidence[key] = quote;
     delete fieldIssues[key];
+  }
+  if (!source.ambiguous && !evidence["currency"]) {
+    // A missing model suggestion must not replace an explicit currency with
+    // the form's default. Recover only one unambiguous printed currency.
+    const currencies = Object.entries(currencyAliases).filter(([, pattern]) =>
+      pattern.test(source.text),
+    );
+    if (currencies.length === 1) {
+      const [currency, pattern] = currencies[0]!;
+      const quote = source.text
+        .split(/\r?\n/)
+        .find((line) => line.length <= 2500 && pattern.test(line));
+      if (quote) {
+        fields.currency = currency;
+        evidence["currency"] = quote.trim();
+        delete fieldIssues.currency;
+      }
+    }
   }
   if (!source.ambiguous && !fields.purchasePrice) {
     const recovered = recoverPurchaseAmount(source.text);

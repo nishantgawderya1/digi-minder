@@ -349,6 +349,7 @@ Invoice Date: 02/10/2026`;
       brand: null,
       purchasePrice: "12.50",
       purchaseDate: "2021-07-25",
+      currency: "EUR",
     });
     expect(result.evidence.purchasePrice).toBe(
       "5 ARTICLE(S) TOTAL À PAYER 12.50e",
@@ -358,6 +359,28 @@ Invoice Date: 02/10/2026`;
     );
     expect(result.fieldIssues.purchasePrice).toBeUndefined();
     expect(result.fieldIssues.purchaseDate).toBeUndefined();
+    expect(result.fieldIssues.currency).toBeUndefined();
+    expect(result.evidence.currency).toBe("CB EMV SANS CONTACT EUR 12.50e");
+  });
+  it("recovers a printed currency after rejecting an unsupported model default", () => {
+    const result = validateExtraction(
+      {
+        fields: { currency: "INR" },
+        evidence: { currency: "Total EUR 12.50" },
+      },
+      "Total EUR 12.50",
+    );
+    expect(result.fields.currency).toBe("EUR");
+    expect(result.fieldIssues.currency).toBeUndefined();
+  });
+  it.each([
+    "Total $12.50",
+    "Total 12.50",
+    "Total EUR 12.50\nConverted USD 14.00",
+  ])("does not invent currency evidence for %s", (source) => {
+    const result = validateExtraction({ fields: {}, evidence: {} }, source);
+    expect(result.evidence.currency).toBeUndefined();
+    expect(result.fieldIssues.currency).toBe("missing");
   });
   it("requires literal Rp evidence to accept IDR and does not infer currency from language", () => {
     expect(
