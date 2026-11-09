@@ -482,6 +482,49 @@ test("invalid formats are rejected before creating a draft", async ({
     await page.evaluate(() => sessionStorage.getItem("test-vault")),
   ).toBeNull();
 });
+test("closing the camera while permission is pending releases a late stream", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () =>
+      new Promise((resolve) => {
+        window.addEventListener(
+          "test-camera-granted",
+          () => {
+            const canvas = document.createElement("canvas");
+            const stream = canvas.captureStream();
+            const [track] = stream.getTracks();
+            resolve(stream);
+            setTimeout(
+              () => (document.body.dataset.testCameraTrack = track!.readyState),
+              0,
+            );
+          },
+          { once: true },
+        );
+      });
+  });
+  await page.goto("/scan");
+  await page.getByRole("button", { name: "Camera", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Bill camera" });
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Take photo" }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("test-camera-granted")),
+  );
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-test-camera-track",
+    "ended",
+  );
+  await expect(
+    page.getByRole("button", { name: "Image", exact: true }),
+  ).toBeEnabled();
+});
+
 test("camera denial has a useful recovery message", async ({ page }) => {
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => {
@@ -699,24 +742,20 @@ test("camera capture creates a review and stops the camera tracks", async ({
   if (test.info().project.name === "mobile") {
     await page.setViewportSize({ width: 568, height: 320 });
     await unobscured(page, "Take photo");
-    await unobscured(page, "Image");
-    await unobscured(page, "Document");
-    const landscapeShutter = await page
-      .getByRole("button", { name: "Take photo", exact: true })
-      .boundingBox();
-    const landscapeOptions = await page
-      .getByRole("group", { name: "Bill upload options" })
-      .boundingBox();
-    expect(landscapeShutter!.y + landscapeShutter!.height).toBeLessThanOrEqual(
-      landscapeOptions!.y,
-    );
+    await unobscured(page, "Close camera");
+    expect(
+      await page.getByRole("dialog", { name: "Bill camera" }).boundingBox(),
+    ).toEqual({ x: 0, y: 0, width: 568, height: 320 });
     await page.setViewportSize({ width: 320, height: 568 });
   }
   const preview = await page.getByLabel("Live camera preview").boundingBox();
   const shutter = await page
     .getByRole("button", { name: "Take photo", exact: true })
     .boundingBox();
-  expect(shutter!.y).toBeGreaterThanOrEqual(preview!.y + preview!.height);
+  expect(
+    shutter!.y >= preview!.y + preview!.height ||
+      shutter!.x >= preview!.x + preview!.width,
+  ).toBe(true);
   await noOverflow(page);
   await page.screenshot({
     path: test.info().outputPath("camera-shutter.png"),

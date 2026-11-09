@@ -250,14 +250,24 @@ for (const size of [sizes[0]!, sizes[4]!, sizes[5]!]) {
       page.getByRole("button", { name: "Close camera", exact: true }),
     );
     await noOverflow(page);
-    const shutter = await page
-      .getByRole("button", { name: "Take photo", exact: true })
-      .boundingBox();
-    const options = await page
-      .getByRole("group", { name: "Bill upload options" })
-      .boundingBox();
-    expect(shutter!.y + shutter!.height).toBeLessThanOrEqual(options!.y);
-    expect(preview!.y + preview!.height).toBeLessThanOrEqual(options!.y);
+    const dialog = page.getByRole("dialog", { name: "Bill camera" });
+    expect(await dialog.boundingBox()).toEqual({
+      x: 0,
+      y: 0,
+      width: size.width,
+      height: size.height,
+    });
+    expect(await dialog.evaluate((element) => element.matches(":modal"))).toBe(
+      true,
+    );
+    await page
+      .getByRole("button", { name: "Image", exact: true })
+      .evaluate((element) => element.focus());
+    expect(
+      await dialog.evaluate((element) =>
+        element.contains(document.activeElement),
+      ),
+    ).toBe(true);
     if (size.name === "short-landscape")
       await page.screenshot({
         path: test.info().outputPath("landscape-camera.png"),

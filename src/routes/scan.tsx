@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   ArrowRight,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PhoneShell } from "@/components/phone-shell";
 import { DocumentPreview } from "@/components/document-preview";
 import { requireCurrentUser } from "@/lib/route-auth";
@@ -34,6 +34,8 @@ export function ScanScreen() {
   const [progress, setProgress] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const cameraDialog = useRef<HTMLDialogElement>(null);
+  const cameraOpen = cameraActive || cameraPending;
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const cameraRequest = useRef(0);
@@ -45,6 +47,14 @@ export function ScanScreen() {
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const progressMessage = useRef<HTMLDivElement>(null);
 
+  const stopCamera = useCallback(() => {
+    cameraRequest.current++;
+    stream.current?.getTracks().forEach((track) => track.stop());
+    stream.current = null;
+    setCameraActive(false);
+    setCameraReady(false);
+    setCameraPending(false);
+  }, []);
   useEffect(() => {
     mounted.current = true;
     const generation = cameraRequest;
@@ -55,17 +65,31 @@ export function ScanScreen() {
     };
   }, []);
   useEffect(() => {
+    if (!cameraOpen) return;
+    const dialog = cameraDialog.current!;
+    dialog.showModal();
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      dialog.close();
+      root.style.overflow = previousOverflow;
+    };
+  }, [cameraOpen]);
+  useEffect(() => {
     if (video.current && cameraActive) {
       const generation = cameraRequest.current;
       video.current.srcObject = stream.current;
       void video.current.play().catch(() => {
-        if (mounted.current && generation === cameraRequest.current)
+        if (mounted.current && generation === cameraRequest.current) {
+          stopCamera();
           setError(
             "The camera preview couldn't play. Reopen the camera or choose a file.",
           );
+        }
       });
     }
-  }, [cameraActive]);
+  }, [cameraActive, stopCamera]);
   useEffect(() => {
     if (!selectedFile) return;
     const url = URL.createObjectURL(selectedFile);
@@ -79,14 +103,6 @@ export function ScanScreen() {
     if (busy) progressMessage.current?.scrollIntoView({ block: "center" });
   }, [busy, progress, selectedFile, previewUrl]);
 
-  const stopCamera = () => {
-    cameraRequest.current++;
-    stream.current?.getTracks().forEach((track) => track.stop());
-    stream.current = null;
-    setCameraActive(false);
-    setCameraReady(false);
-    setCameraPending(false);
-  };
   const startCamera = async () => {
     if (cameraPending || cameraActive || busy || captureLock.current) return;
     setError(null);
@@ -224,7 +240,7 @@ export function ScanScreen() {
       </header>
       <ol
         aria-label="Bill capture progress"
-        className={`${cameraActive ? "hidden lg:flex" : "flex"} items-center gap-3 px-5 pt-5 text-[11px] font-semibold lg:px-8`}
+        className="flex items-center gap-3 px-5 pt-5 text-[11px] font-semibold lg:px-8"
       >
         <li
           aria-current="step"
@@ -264,66 +280,20 @@ export function ScanScreen() {
             contentType={selectedFile.type}
           />
         ) : (
-          <div
-            data-camera-active={cameraActive}
-            className={`capture-preview relative overflow-hidden rounded-lg border ${cameraActive ? "border-foreground bg-foreground h-[min(58svh,calc(100svh-208px))] min-h-32" : "border-primary/20 bg-secondary/45 h-[min(40svh,360px)] min-h-52"} lg:h-[440px]`}
-          >
-            {cameraActive ? (
-              <video
-                ref={video}
-                autoPlay
-                playsInline
-                muted
-                onCanPlay={() => setCameraReady(true)}
-                className="capture-video absolute inset-x-0 top-0 h-[calc(100%-96px)] w-full object-contain"
-                aria-label="Live camera preview"
-              />
-            ) : (
-              <div className="absolute inset-0 grid place-content-center gap-3 px-8 text-center">
-                <span className="mx-auto grid h-20 w-16 place-items-center rounded-lg border border-primary/15 bg-card text-primary shadow-sm">
-                  <ScanLine className="h-8 w-8" strokeWidth={1.5} />
-                </span>
-                <p className="mt-2 text-lg font-semibold">
-                  Keep the receipt. Lose the clutter.
-                </p>
-                <p className="mx-auto max-w-60 text-xs leading-relaxed text-muted-foreground">
-                  Choose a clear photo or PDF. You’ll check the details before
-                  the bill is added to your vault.
-                </p>
-              </div>
-            )}
-            <div
-              className={`capture-guide pointer-events-none absolute inset-x-5 top-5 rounded-sm border border-dashed ${cameraActive ? "bottom-28 border-background/50" : "bottom-5 border-primary/20"}`}
-            />
-            {cameraActive ? (
-              <div className="capture-shutter absolute inset-x-0 bottom-0 flex justify-center bg-foreground/70 py-4">
-                <button
-                  type="button"
-                  aria-label="Take photo"
-                  title="Take photo"
-                  onClick={() => void takePhoto()}
-                  disabled={!cameraReady || capturing || busy}
-                  className="grid h-16 w-16 shrink-0 place-items-center rounded-full border-4 border-background bg-primary text-primary-foreground outline-offset-4 focus-visible:outline-2 focus-visible:outline-background disabled:opacity-50"
-                >
-                  {capturing ? (
-                    <LoaderCircle className="h-6 w-6 animate-spin" />
-                  ) : (
-                    <Camera className="h-7 w-7" />
-                  )}
-                </button>
-              </div>
-            ) : null}
-            {cameraActive || cameraPending ? (
-              <button
-                onClick={stopCamera}
-                disabled={busy}
-                title="Close camera"
-                aria-label="Close camera"
-                className="capture-close absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-sm bg-background text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            ) : null}
+          <div className="relative h-[min(40svh,360px)] min-h-52 overflow-hidden rounded-lg border border-primary/20 bg-secondary/45 lg:h-[440px]">
+            <div className="absolute inset-0 grid place-content-center gap-3 px-8 text-center">
+              <span className="mx-auto grid h-20 w-16 place-items-center rounded-lg border border-primary/15 bg-card text-primary shadow-sm">
+                <ScanLine className="h-8 w-8" strokeWidth={1.5} />
+              </span>
+              <p className="mt-2 text-lg font-semibold">
+                Keep the receipt. Lose the clutter.
+              </p>
+              <p className="mx-auto max-w-60 text-xs leading-relaxed text-muted-foreground">
+                Choose a clear photo or PDF. You’ll check the details before the
+                bill is added to your vault.
+              </p>
+            </div>
+            <div className="pointer-events-none absolute inset-5 rounded-sm border border-dashed border-primary/20" />
           </div>
         )}
         <div className="min-w-0 space-y-5 lg:pt-2">
@@ -441,6 +411,71 @@ export function ScanScreen() {
           ) : null}
         </div>
       </div>
+      <dialog
+        ref={cameraDialog}
+        aria-label="Bill camera"
+        className="bill-camera"
+        onCancel={(event) => {
+          event.preventDefault();
+          stopCamera();
+        }}
+      >
+        {cameraOpen && (
+          <>
+            <div className="relative min-h-0 min-w-0">
+              {cameraActive ? (
+                <video
+                  ref={video}
+                  autoPlay
+                  muted
+                  playsInline
+                  aria-label="Live camera preview"
+                  onCanPlay={() => setCameraReady(true)}
+                  className="absolute inset-0 h-full w-full object-contain"
+                />
+              ) : (
+                <p
+                  role="status"
+                  className="absolute inset-0 grid place-items-center text-sm"
+                >
+                  Opening camera…
+                </p>
+              )}
+              {error && (
+                <p
+                  role="alert"
+                  className="absolute inset-x-4 bottom-4 rounded bg-black/80 p-3 text-center"
+                >
+                  {error}
+                </p>
+              )}
+            </div>
+            <div className="bill-camera-controls">
+              <button
+                type="button"
+                onClick={stopCamera}
+                aria-label="Close camera"
+                className="grid h-12 w-12 place-items-center justify-self-center rounded-full bg-white/15"
+              >
+                <X />
+              </button>
+              <button
+                type="button"
+                aria-label="Take photo"
+                onClick={() => void takePhoto()}
+                disabled={!cameraReady || capturing || busy}
+                className="grid h-16 w-16 place-items-center justify-self-center rounded-full border-4 border-white bg-white text-black ring-2 ring-white/50 ring-offset-2 ring-offset-black disabled:opacity-50"
+              >
+                {capturing ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Camera />
+                )}
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
     </PhoneShell>
   );
 }
